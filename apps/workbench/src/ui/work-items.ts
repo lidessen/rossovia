@@ -260,6 +260,17 @@ export interface WorkItemProjection {
         readonly observedAt: string;
         readonly reason: string;
       };
+    /**
+     * Full items and the on-demand detail route carry the complete ref list
+     * (every correction, rebinding, execution link, claim, claim evidence,
+     * review, and resolution ref). A compact principal-task shell carries
+     * only the minimal locator set — the task source ref and the task
+     * origin ref, plus the retained `worktree:<path>` ref for an orphaned
+     * missing-worktree open Agent-owned Task — count-bounded by
+     * PRINCIPAL_TASK_COMPACT_SOURCE_REF_MAX_COUNT, so the historical
+     * evidence refs never enter the first screen and stay re-readable from
+     * the same canonical Task source.
+     */
     readonly sourceRefs: readonly string[];
   };
   readonly updatedAt: string | null;
@@ -1517,6 +1528,40 @@ export const PRINCIPAL_TASK_SEARCH_TEXT_MAX_BYTES =
   + PRINCIPAL_TASK_SEARCH_TEXT_FIELD_COUNT - 1;
 
 /**
+ * The number of source refs one compact principal-task shell's evidence may
+ * carry at most. The compact first screen keeps only the minimal locator
+ * set: the principal-task source ref, the task's origin ref, and — only for
+ * an open Agent-owned Task whose declared Worktree is no longer observed
+ * (orphaned missing-worktree) — the retained `worktree:<path>` ref that
+ * keeps that locator entry. Every historical ref (corrections, rebindings,
+ * execution links, claims, claim evidence, reviews, resolutions) is left to
+ * the on-demand detail route, which re-reads the same canonical Task source
+ * and projects the complete ref list; the full snapshot keeps the complete
+ * list on every item. The bound is a count: the refs are verbatim canonical
+ * identifiers from the same source records the full projection reads, never
+ * truncated or rewritten.
+ */
+export const PRINCIPAL_TASK_COMPACT_SOURCE_REF_MAX_COUNT = 3 as const;
+
+/**
+ * The provable finite upper bound of one compact principal-task shell's
+ * mirrored text content, in UTF-8 bytes: the shell title and summary each
+ * pass through the same whole-character preview budget as the search-mirror
+ * fields (PRINCIPAL_TASK_SEARCH_TEXT_FIELD_BYTE_CAP each) and the search
+ * mirror itself is bounded by PRINCIPAL_TASK_SEARCH_TEXT_MAX_BYTES.
+ * Structured shell facts are not mirrored text and stay verbatim: the
+ * locator id, lifecycle/nextActor/attention status, the project/Mission/
+ * Worktree relations (projectKey, missionId, binding, worktreeContext), and
+ * the freshness facts (evidence.freshness, updatedAt). The compact shell's
+ * evidence refs are count-bounded by
+ * PRINCIPAL_TASK_COMPACT_SOURCE_REF_MAX_COUNT.
+ */
+export const PRINCIPAL_TASK_COMPACT_SHELL_TEXT_MAX_BYTES =
+  PRINCIPAL_TASK_SEARCH_TEXT_FIELD_BYTE_CAP
+  + PRINCIPAL_TASK_SEARCH_TEXT_FIELD_BYTE_CAP
+  + PRINCIPAL_TASK_SEARCH_TEXT_MAX_BYTES;
+
+/**
  * A UTF-8-prefix truncation that never splits a multi-byte character: the
  * returned string is a whole-character prefix of `value` whose UTF-8 byte
  * length is at most `byteCap`, or `value` itself when it already fits.
@@ -1545,6 +1590,21 @@ function truncateSearchTextField(value: string, byteCap: number): string {
  * through taskDetail.task regardless of compact/full standing.
  */
 function principalTaskShellSummary(value: string, fullDetail: boolean): string {
+  return fullDetail
+    ? value
+    : truncateSearchTextField(value, PRINCIPAL_TASK_SEARCH_TEXT_FIELD_BYTE_CAP);
+}
+
+/**
+ * The principal-task shell title. The compact first screen never carries an
+ * unbounded canonical text: the task title passes through the same
+ * whole-character UTF-8 preview budget as the summary and the search-mirror
+ * fields, so a pathological long title cannot bypass the first-screen bound
+ * through the title field. Full-detail items keep the verbatim canonical
+ * title, and the detail route re-reads it verbatim through
+ * taskDetail.task regardless of compact/full standing.
+ */
+function principalTaskShellTitle(value: string, fullDetail: boolean): string {
   return fullDetail
     ? value
     : truncateSearchTextField(value, PRINCIPAL_TASK_SEARCH_TEXT_FIELD_BYTE_CAP);
@@ -2263,7 +2323,31 @@ function principalTaskWorkItems(
           worktreeReason,
         ),
       };
-    const sourceRefs = [
+    // The compact first screen carries only the minimal locator ref set: the
+    // principal-task source ref, the task's origin ref, and — only for an
+    // orphaned missing-worktree open Agent-owned Task — the retained
+    // `worktree:<path>` ref that keeps that locator entry. Every historical
+    // ref (corrections, rebindings, execution links, claims, claim evidence,
+    // reviews, resolutions) stays on the full item and on the on-demand
+    // detail route, which re-reads the same canonical Task source and
+    // projects the complete ref list. The count bound is
+    // PRINCIPAL_TASK_COMPACT_SOURCE_REF_MAX_COUNT; the full snapshot keeps
+    // the complete historical list on every item, unchanged.
+    const compactSourceRefs = [
+      observation.sourceRef,
+      task.origin.sourceRef,
+      // The orphaned missing-worktree locator is preserved on the compact
+      // shell's evidence refs too: only an open Agent-owned Task whose
+      // declared Worktree is no longer observed adds `worktree:<path>`
+      // here, so locating and evidence entry survive while eligible Tasks
+      // and every other Task keep the two-source ref list unchanged.
+      ...(agentEligibility?.standing === "orphaned"
+        && agentEligibility.reason === "missing-worktree"
+        && expectedWorktreePath !== undefined
+        ? [`worktree:${expectedWorktreePath}`]
+        : []),
+    ];
+    const fullSourceRefs = [
       observation.sourceRef,
       task.origin.sourceRef,
       // The orphaned missing-worktree locator is preserved on the item's own
@@ -2294,6 +2378,7 @@ function principalTaskWorkItems(
           : []),
       ]),
     ];
+    const itemSourceRefs = fullDetail ? fullSourceRefs : compactSourceRefs;
     return {
       id: `principal-task:${task.id}`,
       kind: "principal-task",
@@ -2302,7 +2387,7 @@ function principalTaskWorkItems(
       attention: task.nextActor === "principal"
         ? "decision-required"
         : "normal",
-      title: task.title,
+      title: principalTaskShellTitle(task.title, fullDetail),
       summary: principalTaskShellSummary(
         task.lifecycle === "verifying" && latestClaim?.standing === "submitted"
           ? latestClaim.summary
@@ -2353,7 +2438,10 @@ function principalTaskWorkItems(
             kind: "observed-at-build",
             observedAt: snapshot.generatedAt,
           },
-        sourceRefs: [...new Set(sourceRefs)],
+        // Compact shells: the bounded locator ref set only (≤
+        // PRINCIPAL_TASK_COMPACT_SOURCE_REF_MAX_COUNT); full items and the
+        // detail route: the complete historical ref list, unchanged.
+        sourceRefs: [...new Set(itemSourceRefs)],
       },
       updatedAt: task.updatedAt,
       actionLabel: task.lifecycle === "verifying"
@@ -2915,11 +3003,12 @@ export interface WorkItemProjectionOptions {
    * bytes with the acceptance/todo lists limited to the first
    * ACCEPTANCE_LIMIT/TODOS_LIMIT entries, so one item's searchText never
    * exceeds the provable PRINCIPAL_TASK_SEARCH_TEXT_MAX_BYTES. The compact
-   * shell summary is the same whole-character UTF-8 preview of the current
-   * submitted claim summary or the task objective, so no unbounded canonical
-   * text reaches the first screen through the summary field; the full
-   * projection and the detail route keep the canonical claim/objective
-   * verbatim in the summary field and in taskDetail.task. The canonical Task
+   * shell title and summary pass through the same whole-character UTF-8
+   * preview budget, so no unbounded canonical text reaches the first screen
+   * through the title or summary field; the full projection and the detail
+   * route keep the canonical title/claim/objective verbatim in the shell
+   * and in taskDetail.task, and the complete historical ref list stays on
+   * the full item and on the detail route. The canonical Task
    * file, lifecycle, project, Mission, evidence, and persistence semantics
    * are unchanged either way.
    */
