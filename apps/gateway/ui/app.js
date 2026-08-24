@@ -2317,39 +2317,142 @@ export function backlogTriageProjection(input) {
  * dirtyReason is a failed on-demand read (unknown, never inferred clean); an
  * absent dirty without a reason is an unobserved compact first-paint record
  * (unknown). The projection never turns a missing or failed scan into clean.
+ * attention is the triage standing: dirty and unknown sites need a human
+ * look; only an observed clean site does not.
  */
 export function worktreeDirtyStanding(worktree) {
   const object = worktree !== null && typeof worktree === "object" ? worktree : {};
   if (object.dirty === true) {
-    return { code: "dirty", label: "dirty", detail: "有未提交改动" };
+    return {
+      code: "dirty",
+      label: "dirty",
+      detail: "有未提交改动",
+      attention: true,
+    };
   }
   if (object.dirty === false) {
-    return { code: "clean", label: "clean", detail: "工作区干净" };
+    return {
+      code: "clean",
+      label: "clean",
+      detail: "工作区干净",
+      attention: false,
+    };
   }
   const reason = typeof object.dirtyReason === "string" ? object.dirtyReason : "";
   return reason === ""
-    ? { code: "unknown", label: "unknown", detail: "状态未观察" }
+    ? { code: "unknown", label: "unknown", detail: "状态未观察", attention: true }
     : {
       code: "unknown",
       label: "unknown",
       detail: "读取失败 · 不推断 clean",
       reason,
+      attention: true,
     };
 }
 
 /**
- * The total/dirty/clean/unknown summary of one worktree inventory. `unknown`
- * counts both unobserved compact records and failed reads: a missing or
- * failed scan is never counted as clean.
+ * The total/dirty/clean/unknown/attention summary of one worktree inventory.
+ * unknown counts both unobserved compact records and failed reads: a missing
+ * or failed scan is never counted as clean, and attention (dirty plus
+ * unknown) is the actionable triage count.
  */
 export function projectWorktreeSummary(worktrees) {
   const all = Array.isArray(worktrees) ? worktrees : [];
-  const summary = { total: all.length, dirty: 0, clean: 0, unknown: 0 };
+  const summary = {
+    total: all.length,
+    dirty: 0,
+    clean: 0,
+    unknown: 0,
+    attention: 0,
+  };
   for (const worktree of all) {
     const standing = worktreeDirtyStanding(worktree);
     summary[standing.code] += 1;
+    if (standing.attention) summary.attention += 1;
   }
   return summary;
+}
+
+/**
+ * One worktree's inventory triage rank: attention-needed sites (dirty, then
+ * unknown) come before observed-clean sites, so the default list surfaces
+ * what a human must triage first. The rank is presentation-only: the
+ * canonical inventory order is preserved inside each rank (stable sort) and
+ * every site is retained.
+ */
+export function worktreeInventoryAttentionRank(worktree) {
+  const standing = worktreeDirtyStanding(worktree);
+  return standing.code === "dirty" ? 0
+    : standing.code === "unknown" ? 1
+      : 2;
+}
+
+/**
+ * The default Worktree inventory order (pure presentation): attention-needed
+ * sites (dirty and unknown) first, observed-clean sites after, stable within
+ * each group, and every site retained. Never drops, filters, or archives a
+ * worktree; each row's fail-closed standing is untouched.
+ */
+export function orderWorktreesForInventory(worktrees) {
+  const ordered = Array.isArray(worktrees) ? [...worktrees] : [];
+  ordered.sort((left, right) =>
+    worktreeInventoryAttentionRank(left) - worktreeInventoryAttentionRank(right));
+  return ordered;
+}
+
+/**
+ * The stable identity of one Worktree, shared by every selection surface
+ * (overview rows, inventory rows, selectedWorktree, ensureSelections, and
+ * the target preview): the canonical path every projected Worktree carries
+ * (WorktreeProjection.path; the on-demand status records carry the same
+ * path), falling back to the explicit id/name fields of legacy mission-
+ * nested records. Array indexes are never part of the identity, so the
+ * attention-sorted inventory can never renumber a selected Worktree. An
+ * unidentifiable record yields null and the selection surfaces fail closed
+ * to "no selection" instead of guessing by position.
+ */
+export function worktreeIdentity(worktree) {
+  const object = worktree !== null && typeof worktree === "object" ? worktree : {};
+  for (const key of ["path", "worktreePath"]) {
+    const value = object[key];
+    if (typeof value === "string" && value !== "") return value;
+  }
+  for (const key of ["id", "worktreeId", "name"]) {
+    const value = object[key];
+    if (typeof value === "string" && value !== "") return value;
+  }
+  return null;
+}
+
+/**
+ * Resolve the selected Worktree identity against one inventory list. The
+ * identity is the stable canonical one (worktreeIdentity), never an array
+ * index, so a selection made from the attention-sorted inventory rows
+ * resolves to the exact same original Worktree when looked up in the
+ * canonical unsorted inventory. An absent, empty, or unresolvable selection
+ * resolves to null — never the first element by position (fail-closed).
+ */
+export function selectedWorktreeFromInventory(worktrees, selectedWorktreeId) {
+  if (typeof selectedWorktreeId !== "string" || selectedWorktreeId === "") return null;
+  const all = Array.isArray(worktrees) ? worktrees : [];
+  return all.find(
+    (worktree) => worktreeIdentity(worktree) === selectedWorktreeId,
+  ) || null;
+}
+
+/**
+ * The row status line of one Worktree inventory entry: the relationship
+ * marker (registered primary / additional worktree), the standing label with
+ * an explicit 需关注 attention marker, and the fail-closed detail when the
+ * read failed. The label never implies deletion, archival, or reclaimability.
+ */
+export function worktreeInventoryStatusLine(worktree) {
+  const object = worktree !== null && typeof worktree === "object" ? worktree : {};
+  const primary = object.registeredPrimary === true;
+  const standing = worktreeDirtyStanding(object);
+  return (primary ? "主线主现场" : "附加 Worktree")
+    + " · " + (standing.attention ? "需关注 · " : "") + standing.label
+    + (standing.reason ? " · " + standing.detail : "");
 }
 
 /**
@@ -3678,16 +3781,20 @@ export function worktreeRetentionBoundaryNote() {
     const project = selectedProject();
     const mission = selectedMission();
     if (!project) return null;
-    const allWorktrees = projectWorktrees(project);
-    const direct = allWorktrees.find(
-      (worktree, index) => identifier(worktree, `worktree-${index}`) === state.selectedWorktreeId,
+    // The selection is the stable Worktree identity (canonical path), never
+    // an array index: the same identity resolves the attention-sorted
+    // inventory rows and the canonical unsorted inventory to the exact same
+    // original Worktree, so clicking a reordered row can never select a
+    // neighbor.
+    const direct = selectedWorktreeFromInventory(
+      projectWorktrees(project),
+      state.selectedWorktreeId,
     );
     if (direct) return direct;
     if (!mission) return null;
-    return (
-      missionWorktrees(project, mission).find(
-        (worktree, index) => identifier(worktree, `worktree-${index}`) === state.selectedWorktreeId,
-      ) || null
+    return selectedWorktreeFromInventory(
+      missionWorktrees(project, mission),
+      state.selectedWorktreeId,
     );
   }
 
@@ -3815,7 +3922,7 @@ export function worktreeRetentionBoundaryNote() {
         (candidate) =>
           text(first(candidate, ["path", "worktreePath"]), "") === worktreePath,
       );
-      state.selectedWorktreeId = worktree ? identifier(worktree, "") : null;
+      state.selectedWorktreeId = worktree ? worktreeIdentity(worktree) : null;
     } else {
       state.selectedWorktreeId = null;
     }
@@ -3972,12 +4079,14 @@ export function worktreeRetentionBoundaryNote() {
       return;
     }
 
-    if (!worktrees.some((worktree, index) => identifier(worktree, `worktree-${index}`) === state.selectedWorktreeId)) {
+    if (selectedWorktreeFromInventory(worktrees, state.selectedWorktreeId) === null) {
       const observedPath = text(first(first(mission, ["observedGitContext"], {}), ["worktreePath"]), "");
       const observed = worktrees.find(
         (worktree) => text(first(worktree, ["path", "worktreePath"]), "") === observedPath,
       );
-      state.selectedWorktreeId = identifier(observed || worktrees[0], "worktree-0");
+      // The default selection is the stable canonical identity of the
+      // observed (or first) worktree — never a positional index.
+      state.selectedWorktreeId = worktreeIdentity(observed || worktrees[0]);
     }
   }
 
@@ -4455,12 +4564,12 @@ export function worktreeRetentionBoundaryNote() {
               </div>
               ${
                 worktrees.length
-                  ? worktrees.map((worktree, worktreeIndex) => `
+                  ? worktrees.map((worktree) => `
                       <button
                         class="overview-worktree"
                         type="button"
                         data-overview-project="${escapeHtml(summary.projectKey)}"
-                        data-overview-worktree="${escapeHtml(identifier(worktree, `worktree-${worktreeIndex}`))}"
+                        data-overview-worktree="${escapeHtml(worktreeIdentity(worktree) ?? "")}"
                       >
                         <strong>${escapeHtml(first(worktree, ["gitBranch", "branch", "name"], "detached"))}</strong>
                         <span>${escapeHtml(first(worktree, ["path"], "位置未知"))}</span>
@@ -4491,14 +4600,16 @@ export function worktreeRetentionBoundaryNote() {
     });
     container.querySelectorAll("[data-overview-worktree]").forEach((button) => {
       button.addEventListener("click", () => {
+        const worktreeId = button.dataset.overviewWorktree ?? "";
+        if (worktreeId === "") return;
         state.unavailableLocus = null;
         state.selectedProjectId = button.dataset.overviewProject;
-        state.selectedWorktreeId = button.dataset.overviewWorktree;
+        state.selectedWorktreeId = worktreeId;
         state.activeView = "project";
         state.peekOpen = false;
         state.taskCreateOpen = false;
         ensureSelections();
-        state.selectedWorktreeId = button.dataset.overviewWorktree;
+        state.selectedWorktreeId = worktreeId;
         render();
         writePrincipalLocus();
         requestWorktreeStatusForCurrentContext(true);
@@ -6815,13 +6926,13 @@ export function worktreeRetentionBoundaryNote() {
                 worktrees.length
                   ? `<div class="worktree-list">
                       ${worktrees
-                        .map((worktree, worktreeIndex) => {
-                          const worktreeId = identifier(worktree, `worktree-${worktreeIndex}`);
+                        .map((worktree) => {
+                          const worktreeId = worktreeIdentity(worktree);
                           const binding = normalizeMode(first(worktree, ["binding", "bindingStatus", "status"], "unverified"));
                           const dirty = first(worktree, ["dirty", "isDirty"]);
                           return `
                             <button
-                              class="worktree-button ${id === state.selectedMissionId && worktreeId === state.selectedWorktreeId ? "is-selected" : ""}"
+                              class="worktree-button ${id === state.selectedMissionId && worktreeId !== null && worktreeId === state.selectedWorktreeId ? "is-selected" : ""}"
                               type="button"
                               data-mission-id="${escapeHtml(id)}"
                               data-worktree-id="${escapeHtml(worktreeId)}"
@@ -6869,9 +6980,11 @@ export function worktreeRetentionBoundaryNote() {
 
     $$(".worktree-button").forEach((button) => {
       button.addEventListener("click", () => {
+        const worktreeId = button.dataset.worktreeId ?? "";
+        if (worktreeId === "") return;
         state.unavailableLocus = null;
         state.selectedMissionId = button.dataset.missionId;
-        state.selectedWorktreeId = button.dataset.worktreeId;
+        state.selectedWorktreeId = worktreeId;
         const item = workItems().find(
           (candidate) =>
             candidate.projectKey === state.selectedProjectId
@@ -6891,7 +7004,7 @@ export function worktreeRetentionBoundaryNote() {
     const noteRoot = $("#worktree-inventory-note");
     const projectKey = identifier(project, "");
     const status = projectWorktreeStatusFor(projectKey);
-    const worktrees = projectWorktrees(project);
+    const worktrees = orderWorktreesForInventory(projectWorktrees(project));
     const summary = projectWorktreeSummary(worktrees);
     if (summaryRoot !== null) {
       const readFailed = status !== null
@@ -6903,8 +7016,9 @@ export function worktreeRetentionBoundaryNote() {
       summaryRoot.textContent = status !== null
         ? readFailed
           ? "共 0 个 · 清单读取失败 · 状态未知"
-          : "共 " + summary.total + " 个 · dirty " + summary.dirty
-            + " · clean " + summary.clean + " · unknown " + summary.unknown
+          : "共 " + summary.total + " 个 · 需关注 " + summary.attention
+            + "（dirty " + summary.dirty + " · unknown " + summary.unknown + "）"
+            + " · clean " + summary.clean
         : "共 " + summary.total + " 个 · 状态未按需读取";
     }
     if (noteRoot !== null) {
@@ -6946,11 +7060,13 @@ export function worktreeRetentionBoundaryNote() {
       return;
     }
     container.innerHTML = worktrees
-      .map((worktree, index) => {
-        const id = identifier(worktree, "worktree-" + index);
+      .map((worktree) => {
+        // The row identity is the stable canonical path, never the sorted
+        // array index, so selecting an attention-ordered row resolves to the
+        // exact same original Worktree in the canonical inventory.
+        const id = worktreeIdentity(worktree);
         const branch = text(first(worktree, ["gitBranch", "branch"]), "detached");
         const head = text(first(worktree, ["head", "headSha", "sha"]), "?");
-        const primary = first(worktree, ["registeredPrimary"]) === true;
         const standing = worktreeDirtyStanding(worktree);
         // The bounded retention hint is projected from the existing snapshot
         // sources (workItems / missions / runners) with the same fail-closed
@@ -6963,13 +7079,12 @@ export function worktreeRetentionBoundaryNote() {
           worktreeRetentionInput(project),
         );
         const chips = worktreeRetentionHintCopy(retention, worktree);
-        const statusLine = (primary ? "主线主现场" : "附加 Worktree")
-          + " · " + standing.label
-          + (standing.reason ? " · " + standing.detail : "");
+        const statusLine = worktreeInventoryStatusLine(worktree);
         return '<button class="inventory-worktree '
-          + (id === state.selectedWorktreeId ? 'is-selected' : '')
+          + (id !== null && id === state.selectedWorktreeId ? 'is-selected' : '')
           + '" type="button" data-inventory-worktree="' + escapeHtml(id) + '"'
           + ' data-dirty-standing="' + escapeHtml(standing.code) + '"'
+          + ' data-attention="' + (standing.attention ? 'true' : 'false') + '"'
           + (standing.reason ? ' title="' + escapeHtml(standing.reason) + '"' : '')
           + '>'
           + '<strong>' + escapeHtml(branch) + ' @ ' + escapeHtml(head) + '</strong>'
@@ -6985,8 +7100,10 @@ export function worktreeRetentionBoundaryNote() {
       .join("");
     $$("[data-inventory-worktree]").forEach((button) => {
       button.addEventListener("click", () => {
+        const worktreeId = button.dataset.inventoryWorktree ?? "";
+        if (worktreeId === "") return;
         state.unavailableLocus = null;
-        state.selectedWorktreeId = button.dataset.inventoryWorktree;
+        state.selectedWorktreeId = worktreeId;
         render();
         writePrincipalLocus();
       });
@@ -7053,7 +7170,7 @@ export function worktreeRetentionBoundaryNote() {
     return {
       projectId: project ? identifier(project, "") : null,
       missionId: mission ? identifier(mission, "") : null,
-      worktreeId: worktree ? identifier(worktree, "") : null,
+      worktreeId: worktree ? worktreeIdentity(worktree) : null,
       worktreePath: worktree ? first(worktree, ["path", "workspacePath"], null) : null,
       runnerId: runner
         ? identifier(status, "")
