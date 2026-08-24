@@ -50,6 +50,8 @@
 
 ## 还要做
 
+- 哲学基础按「一」梳理基因名单（`theory/research/philosophy-gene-one.md`）。未选定前不改 `theory/philosophy.md`。
+
 从 `archive/` 移出后再改，不要直接改暂存副本：
 
 - `archive/design/harness/` 等 → `theory/harness/`
