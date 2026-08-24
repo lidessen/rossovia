@@ -1,4 +1,5 @@
 import { realpathSync } from "node:fs";
+import { isEmptyWorkCellFinalResult } from "../../../../packages/work-cell/src/contracts";
 import type { TaskAttemptProjection } from "../task-attempts";
 import {
   readStrictTaskAttemptEvidence,
@@ -2831,6 +2832,12 @@ function attemptResultEvidenceFor(
     || final.verification.passed !== true
     || final.verification.terminal.passed !== true
   ) return null;
+  // A mechanically passed run that retained no final text, no raw steps, and
+  // no workspace diff is an empty return, not a verified Task result: it
+  // yields no candidate without being reclassified. The attempt evidence
+  // stays observed exactly as recorded (passed/recorded), so the empty
+  // return is neither disguised as READY nor as no-change.
+  if (isEmptyWorkCellFinalResult(final)) return null;
   if (!sameObservedPath(input.workspace.root, expectedWorktreePath)) return null;
   let head: string | null = null;
   try {
