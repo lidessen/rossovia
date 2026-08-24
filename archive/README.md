@@ -17,6 +17,8 @@ Still here, waiting to move or to stay as evidence:
 - `skills/`
 - `chronicle/`, `evaluations/`, `experiments/`
 - `legacy/` — the previous top-level `archive/`
+- `apps/`, `packages/`, `site/` — markdown that sat next to code (READMEs, Workbench AGENTS, fixture docs)
+- `.github/PULL_REQUEST_TEMPLATE.md`, `.codex/README.md`
 - root notes: `CHANGELOG.md`, `CLAUDE.md`, `README.zh-CN.md`, `ROSSOVIA.md`
 
 The complete previous tree, including code, remains on branch `archive/v0.5`.
