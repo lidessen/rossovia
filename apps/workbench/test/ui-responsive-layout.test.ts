@@ -17,6 +17,32 @@ function mediaSection(start: string, end: string): string {
   return styles.slice(startIndex, endIndex);
 }
 
+function mediaSections(query: string): string {
+  const marker = `@media ${query} {`;
+  const sections: string[] = [];
+  let cursor = 0;
+  while (true) {
+    const start = styles.indexOf(marker, cursor);
+    if (start < 0) break;
+    let depth = 0;
+    let end = styles.indexOf("{", start);
+    for (; end >= 0 && end < styles.length; end += 1) {
+      if (styles[end] === "{") depth += 1;
+      if (styles[end] === "}") {
+        depth -= 1;
+        if (depth === 0) {
+          end += 1;
+          break;
+        }
+      }
+    }
+    expect(end).toBeGreaterThan(start);
+    sections.push(styles.slice(start, end));
+    cursor = end;
+  }
+  return sections.join("\n");
+}
+
 describe("Workbench responsive layout", () => {
   test("makes the unified overview primary while retaining detail evidence on demand", () => {
     expect(html.indexOf('id="unified-surface"')).toBeLessThan(
@@ -54,7 +80,7 @@ describe("Workbench responsive layout", () => {
       'data-mobile-view="tasks"',
       'data-mobile-view="projects"',
     ]);
-    const mobile = styles.slice(styles.lastIndexOf("@media (max-width: 700px)"));
+    const mobile = mediaSections("(max-width: 700px)");
     expect(mobile).toMatch(
       /\.mobile-tab-bar\s*\{[^}]*bottom:\s*0;[^}]*display:\s*grid;[^}]*grid-template-columns:\s*repeat\(4,\s*1fr\);[^}]*position:\s*fixed;/s,
     );
@@ -65,15 +91,15 @@ describe("Workbench responsive layout", () => {
     expect(html).toContain('<h2 id="principal-attention-heading">待我处理</h2>');
     expect(html).toContain('id="system-overview"');
     expect(app).toContain("classifyWorkbenchAttention(workItems()).principal");
-    expect(app).toContain("attention.principal.slice(0, 5)");
-    expect(app).toContain("attention.system.slice(0, 5)");
-    const mobile = styles.slice(styles.lastIndexOf("@media (max-width: 700px)"));
+    expect(app).toContain("principalEntry.slice(0, 5)");
+    expect(app).toContain("systemEntry.slice(0, 5)");
+    const mobile = mediaSections("(max-width: 700px)");
     expect(mobile).toMatch(/\.principal-rail\s*\{[^}]*display:\s*none;/s);
     expect(mobile).not.toMatch(/\.system-overview\s*\{[^}]*display:\s*none;/s);
   });
 
   test("makes consequential mobile details full-screen with sticky authorization actions", () => {
-    const mobile = styles.slice(styles.lastIndexOf("@media (max-width: 700px)"));
+    const mobile = mediaSections("(max-width: 700px)");
     expect(mobile).toMatch(
       /\.action-surface\s*\{[^}]*display:\s*block;[^}]*height:\s*100dvh;[^}]*inset:\s*0;[^}]*width:\s*100%;/s,
     );
@@ -157,7 +183,7 @@ describe("Workbench responsive layout", () => {
   });
 
   test("keeps the authorized Agent launch reachable on mobile without a second authorization form", () => {
-    const mobile = styles.slice(styles.lastIndexOf("@media (max-width: 700px)"));
+    const mobile = mediaSections("(max-width: 700px)");
 
     expect(html.match(/id="task-launch-execution-form"/g)).toHaveLength(1);
     expect(html).not.toContain("task-launch-authorization-input");
@@ -206,7 +232,7 @@ describe("Workbench responsive layout", () => {
   });
 
   test("keeps the conversation destination usable at 390px without covering the composer", () => {
-    const mobile = styles.slice(styles.lastIndexOf("@media (max-width: 700px)"));
+    const mobile = mediaSections("(max-width: 700px)");
 
     expect(html).toContain('id="conversation-surface"');
     expect(html).toContain('id="conversation-feed"');
@@ -325,7 +351,7 @@ describe("Workbench responsive layout", () => {
   });
 
   test("keeps local task primary actions reachable on mobile", () => {
-    const mobile = styles.slice(styles.lastIndexOf("@media (max-width: 700px)"));
+    const mobile = mediaSections("(max-width: 700px)");
     expect(mobile).toMatch(
       /\.task-primary-actions\s*\{[^}]*bottom:\s*0;[^}]*position:\s*sticky;/s,
     );
@@ -350,7 +376,7 @@ describe("Workbench responsive layout", () => {
   });
 
   test("keeps ordinary Task attempt evidence readable at desktop and mobile widths", () => {
-    const mobile = styles.slice(styles.lastIndexOf("@media (max-width: 700px)"));
+    const mobile = mediaSections("(max-width: 700px)");
 
     expect(html).toContain('id="local-task-attempts"');
     expect(app).toContain('class="local-task-facts task-attempt-facts"');
@@ -371,7 +397,7 @@ describe("Workbench responsive layout", () => {
   });
 
   test("keeps the mobile first screen compact: header and boundary copy out of the feed, composer stable", () => {
-    const mobile = styles.slice(styles.lastIndexOf("@media (max-width: 700px)"));
+    const mobile = mediaSections("(max-width: 700px)");
 
     expect(mobile).toMatch(/\.conversation-header p\s*\{[^}]*display:\s*none;/s);
     expect(mobile).toMatch(/\.conversation-boundary\s*\{[^}]*display:\s*none;/s);
