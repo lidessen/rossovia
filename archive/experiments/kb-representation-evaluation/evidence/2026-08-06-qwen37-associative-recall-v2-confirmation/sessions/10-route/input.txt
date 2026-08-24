@@ -1,0 +1,7 @@
+# shilu-associative-recall-v2 deterministic BM25 search
+# Ranked locator-only candidates. Titles are index metadata, not evidence.
+RESULT	1	SHILU-S12	pkg/core/entries.go · CreateEntry / SupersedeEntry	9.071011
+RESULT	2	SHILU-S10	pkg/index/index.go · ftsQuery / Rebuild	6.911039
+RESULT	3	SHILU-S03	DESIGN.md · Indexes	6.063407
+RESULT	4	SHILU-S07	pkg/source/source.go · Normalize / StoreRaw	5.392168
+RESULT	5	SHILU-S02	DESIGN.md · Source / Entry / Entry Event	5.235464

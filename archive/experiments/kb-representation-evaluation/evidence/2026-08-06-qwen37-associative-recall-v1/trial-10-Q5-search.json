@@ -1,0 +1,299 @@
+{
+  "trial": 10,
+  "question": {
+    "id": "Q5",
+    "prompt": "Before an optional model proposes a digest, what context can it receive, and which part of the system still owns the decision to mutate durable knowledge?"
+  },
+  "condition": "search",
+  "route": {
+    "candidates": [
+      "SHILU-S11",
+      "SHILU-S04",
+      "SHILU-S08",
+      "SHILU-S01",
+      "SHILU-S02"
+    ]
+  },
+  "answer": {
+    "claims": [
+      {
+        "claimId": "Q5-C1",
+        "valueKey": "source-rawcontent-collection-relatedentries",
+        "citations": [
+          {
+            "sourceId": "SHILU-S11",
+            "anchor": "DigestRequest / DigestResult"
+          }
+        ]
+      },
+      {
+        "claimId": "Q5-C2",
+        "valueKey": "core-validates-and-commits",
+        "citations": [
+          {
+            "sourceId": "SHILU-S08",
+            "anchor": "Core invariant"
+          },
+          {
+            "sourceId": "SHILU-S01",
+            "anchor": "Principles"
+          },
+          {
+            "sourceId": "SHILU-S04",
+            "anchor": "Agent Interaction / Incremental Knowledge Workflow"
+          }
+        ]
+      }
+    ]
+  },
+  "score": {
+    "gold": [
+      "SHILU-S04",
+      "SHILU-S11"
+    ],
+    "candidates": [
+      "SHILU-S11",
+      "SHILU-S04",
+      "SHILU-S08",
+      "SHILU-S01",
+      "SHILU-S02"
+    ],
+    "hitAt1": true,
+    "hitAt3": true,
+    "hitAt5": true,
+    "recallAt1": 0.5,
+    "recallAt3": 1,
+    "recallAt5": 1,
+    "allRequiredHitAt3": true,
+    "allRequiredHitAt5": true,
+    "reciprocalRank": 1,
+    "openedSources": 5,
+    "answerAccuracy": 1,
+    "citationPrecision": 0.75,
+    "citationCoverage": 1,
+    "protocolValid": true,
+    "groundedSuccess": false,
+    "claimResults": [
+      {
+        "claimId": "Q5-C1",
+        "expectedKey": "source-rawcontent-collection-relatedentries",
+        "actualKey": "source-rawcontent-collection-relatedentries",
+        "answerCorrect": true,
+        "citations": [
+          {
+            "sourceId": "SHILU-S11",
+            "anchor": "DigestRequest / DigestResult",
+            "locatable": true,
+            "opened": true,
+            "supportsClaim": true,
+            "correct": true
+          }
+        ],
+        "hasCorrectCitation": true
+      },
+      {
+        "claimId": "Q5-C2",
+        "expectedKey": "core-validates-and-commits",
+        "actualKey": "core-validates-and-commits",
+        "answerCorrect": true,
+        "citations": [
+          {
+            "sourceId": "SHILU-S08",
+            "anchor": "Core invariant",
+            "locatable": true,
+            "opened": true,
+            "supportsClaim": true,
+            "correct": true
+          },
+          {
+            "sourceId": "SHILU-S01",
+            "anchor": "Principles",
+            "locatable": true,
+            "opened": true,
+            "supportsClaim": false,
+            "correct": false
+          },
+          {
+            "sourceId": "SHILU-S04",
+            "anchor": "Agent Interaction / Incremental Knowledge Workflow",
+            "locatable": true,
+            "opened": true,
+            "supportsClaim": true,
+            "correct": true
+          }
+        ],
+        "hasCorrectCitation": true
+      }
+    ]
+  },
+  "routeParseError": null,
+  "answerParseError": null,
+  "activation": {
+    "path": "inputs/search-Q5.txt",
+    "sha256": "sha256:fb1e78f17229184f1b3d2a8a85be0dc5b3c25733036b9ea0d80c98ae629a3248",
+    "bytes": 469
+  },
+  "sourcePacket": {
+    "path": "inputs/10-Q5-search-sources.md",
+    "sha256": "sha256:8d73b46ced0d3c04fddae95f8ac9222e5cace362155aa286aaf5e67aebeb5ed1",
+    "bytes": 5952
+  },
+  "routeRun": {
+    "startedAt": "2026-08-06T09:52:36.089Z",
+    "finishedAt": "2026-08-06T09:52:49.684Z",
+    "durationMs": 13595,
+    "exitCode": 0,
+    "answerText": "{\"candidates\":[\"SHILU-S11\",\"SHILU-S04\",\"SHILU-S08\",\"SHILU-S01\",\"SHILU-S02\"]}",
+    "usage": {
+      "tokens": {
+        "total": 24010,
+        "input": 6,
+        "output": 510,
+        "reasoning": 0,
+        "cache": {
+          "write": 23494,
+          "read": 0
+        }
+      },
+      "cost": 0.0125654,
+      "reason": "stop"
+    },
+    "stderr": null,
+    "eventParseError": null,
+    "toolProtocolError": null,
+    "rawEvents": [
+      {
+        "type": "step_start",
+        "timestamp": 1786009960604,
+        "sessionID": "ses_02982ceffffeoh6oF4zteyeltX",
+        "part": {
+          "id": "prt_fd67d40960019zWxxo81k0GkI2",
+          "messageID": "msg_fd67d31a8001uDeNpWh4HTw4RQ",
+          "sessionID": "ses_02982ceffffeoh6oF4zteyeltX",
+          "snapshot": "c13ab45cb4a06284c6eddf4fa1e3c839ca2ad0e6",
+          "type": "step-start"
+        }
+      },
+      {
+        "type": "text",
+        "timestamp": 1786009969471,
+        "sessionID": "ses_02982ceffffeoh6oF4zteyeltX",
+        "part": {
+          "id": "prt_fd67d60bd001GyervYpL1kzV9o",
+          "messageID": "msg_fd67d31a8001uDeNpWh4HTw4RQ",
+          "sessionID": "ses_02982ceffffeoh6oF4zteyeltX",
+          "type": "text",
+          "text": "{\"candidates\":[\"SHILU-S11\",\"SHILU-S04\",\"SHILU-S08\",\"SHILU-S01\",\"SHILU-S02\"]}",
+          "time": {
+            "start": 1786009968829,
+            "end": 1786009969468
+          }
+        }
+      },
+      {
+        "type": "step_finish",
+        "timestamp": 1786009969639,
+        "sessionID": "ses_02982ceffffeoh6oF4zteyeltX",
+        "part": {
+          "id": "prt_fd67d63e4001UXF6BQLEa25XIk",
+          "reason": "stop",
+          "snapshot": "c13ab45cb4a06284c6eddf4fa1e3c839ca2ad0e6",
+          "messageID": "msg_fd67d31a8001uDeNpWh4HTw4RQ",
+          "sessionID": "ses_02982ceffffeoh6oF4zteyeltX",
+          "type": "step-finish",
+          "tokens": {
+            "total": 24010,
+            "input": 6,
+            "output": 510,
+            "reasoning": 0,
+            "cache": {
+              "write": 23494,
+              "read": 0
+            }
+          },
+          "cost": 0.0125654
+        }
+      }
+    ],
+    "rawStdout": null
+  },
+  "answerRun": {
+    "startedAt": "2026-08-06T09:52:49.685Z",
+    "finishedAt": "2026-08-06T09:53:02.741Z",
+    "durationMs": 13055,
+    "exitCode": 0,
+    "answerText": "```json\n{\"claims\":[{\"claimId\":\"Q5-C1\",\"valueKey\":\"source-rawcontent-collection-relatedentries\",\"citations\":[{\"sourceId\":\"SHILU-S11\",\"anchor\":\"DigestRequest / DigestResult\"}]},{\"claimId\":\"Q5-C2\",\"valueKey\":\"core-validates-and-commits\",\"citations\":[{\"sourceId\":\"SHILU-S08\",\"anchor\":\"Core invariant\"},{\"sourceId\":\"SHILU-S01\",\"anchor\":\"Principles\"},{\"sourceId\":\"SHILU-S04\",\"anchor\":\"Agent Interaction / Incremental Knowledge Workflow\"}]}]}\n```",
+    "usage": {
+      "tokens": {
+        "total": 26002,
+        "input": 6,
+        "output": 474,
+        "reasoning": 0,
+        "cache": {
+          "write": 25522,
+          "read": 0
+        }
+      },
+      "cost": 0.0135218,
+      "reason": "stop"
+    },
+    "stderr": null,
+    "eventParseError": null,
+    "toolProtocolError": null,
+    "rawEvents": [
+      {
+        "type": "step_start",
+        "timestamp": 1786009974450,
+        "sessionID": "ses_0298299b5ffer3wkVyITwyeCdr",
+        "part": {
+          "id": "prt_fd67d76ad001d62knY88I4vLZi",
+          "messageID": "msg_fd67d6706001DOzDeGR4nIhPPK",
+          "sessionID": "ses_0298299b5ffer3wkVyITwyeCdr",
+          "snapshot": "5c682d492241f8cdbc77f70b87ac0e027854ed38",
+          "type": "step-start"
+        }
+      },
+      {
+        "type": "text",
+        "timestamp": 1786009982599,
+        "sessionID": "ses_0298299b5ffer3wkVyITwyeCdr",
+        "part": {
+          "id": "prt_fd67d8e39001oAmbdbESYARoBn",
+          "messageID": "msg_fd67d6706001DOzDeGR4nIhPPK",
+          "sessionID": "ses_0298299b5ffer3wkVyITwyeCdr",
+          "type": "text",
+          "text": "```json\n{\"claims\":[{\"claimId\":\"Q5-C1\",\"valueKey\":\"source-rawcontent-collection-relatedentries\",\"citations\":[{\"sourceId\":\"SHILU-S11\",\"anchor\":\"DigestRequest / DigestResult\"}]},{\"claimId\":\"Q5-C2\",\"valueKey\":\"core-validates-and-commits\",\"citations\":[{\"sourceId\":\"SHILU-S08\",\"anchor\":\"Core invariant\"},{\"sourceId\":\"SHILU-S01\",\"anchor\":\"Principles\"},{\"sourceId\":\"SHILU-S04\",\"anchor\":\"Agent Interaction / Incremental Knowledge Workflow\"}]}]}\n```",
+          "time": {
+            "start": 1786009980473,
+            "end": 1786009982596
+          }
+        }
+      },
+      {
+        "type": "step_finish",
+        "timestamp": 1786009982690,
+        "sessionID": "ses_0298299b5ffer3wkVyITwyeCdr",
+        "part": {
+          "id": "prt_fd67d96df001w7HU2TMG1WHn0W",
+          "reason": "stop",
+          "snapshot": "5c682d492241f8cdbc77f70b87ac0e027854ed38",
+          "messageID": "msg_fd67d6706001DOzDeGR4nIhPPK",
+          "sessionID": "ses_0298299b5ffer3wkVyITwyeCdr",
+          "type": "step-finish",
+          "tokens": {
+            "total": 26002,
+            "input": 6,
+            "output": 474,
+            "reasoning": 0,
+            "cache": {
+              "write": 25522,
+              "read": 0
+            }
+          },
+          "cost": 0.0135218
+        }
+      }
+    ],
+    "rawStdout": null
+  }
+}

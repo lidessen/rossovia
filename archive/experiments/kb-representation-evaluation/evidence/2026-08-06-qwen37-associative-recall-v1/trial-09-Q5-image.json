@@ -1,0 +1,287 @@
+{
+  "trial": 9,
+  "question": {
+    "id": "Q5",
+    "prompt": "Before an optional model proposes a digest, what context can it receive, and which part of the system still owns the decision to mutate durable knowledge?"
+  },
+  "condition": "image",
+  "route": {
+    "candidates": [
+      "SHILU-S04",
+      "SHILU-S11",
+      "SHILU-S02",
+      "SHILU-S01",
+      "SHILU-S03"
+    ]
+  },
+  "answer": {
+    "claims": [
+      {
+        "claimId": "Q5-C1",
+        "valueKey": "source-rawcontent-collection-relatedentries",
+        "citations": [
+          {
+            "sourceId": "SHILU-S11",
+            "anchor": "DigestRequest"
+          }
+        ]
+      },
+      {
+        "claimId": "Q5-C2",
+        "valueKey": "core-validates-and-commits",
+        "citations": [
+          {
+            "sourceId": "SHILU-S01",
+            "anchor": "Principles"
+          },
+          {
+            "sourceId": "SHILU-S04",
+            "anchor": "Agent Interaction"
+          }
+        ]
+      }
+    ]
+  },
+  "score": {
+    "gold": [
+      "SHILU-S04",
+      "SHILU-S11"
+    ],
+    "candidates": [
+      "SHILU-S04",
+      "SHILU-S11",
+      "SHILU-S02",
+      "SHILU-S01",
+      "SHILU-S03"
+    ],
+    "hitAt1": true,
+    "hitAt3": true,
+    "hitAt5": true,
+    "recallAt1": 0.5,
+    "recallAt3": 1,
+    "recallAt5": 1,
+    "allRequiredHitAt3": true,
+    "allRequiredHitAt5": true,
+    "reciprocalRank": 1,
+    "openedSources": 5,
+    "answerAccuracy": 1,
+    "citationPrecision": 0,
+    "citationCoverage": 0,
+    "protocolValid": true,
+    "groundedSuccess": false,
+    "claimResults": [
+      {
+        "claimId": "Q5-C1",
+        "expectedKey": "source-rawcontent-collection-relatedentries",
+        "actualKey": "source-rawcontent-collection-relatedentries",
+        "answerCorrect": true,
+        "citations": [
+          {
+            "sourceId": "SHILU-S11",
+            "anchor": "DigestRequest",
+            "locatable": false,
+            "opened": true,
+            "supportsClaim": true,
+            "correct": false
+          }
+        ],
+        "hasCorrectCitation": false
+      },
+      {
+        "claimId": "Q5-C2",
+        "expectedKey": "core-validates-and-commits",
+        "actualKey": "core-validates-and-commits",
+        "answerCorrect": true,
+        "citations": [
+          {
+            "sourceId": "SHILU-S01",
+            "anchor": "Principles",
+            "locatable": true,
+            "opened": true,
+            "supportsClaim": false,
+            "correct": false
+          },
+          {
+            "sourceId": "SHILU-S04",
+            "anchor": "Agent Interaction",
+            "locatable": false,
+            "opened": true,
+            "supportsClaim": true,
+            "correct": false
+          }
+        ],
+        "hasCorrectCitation": false
+      }
+    ]
+  },
+  "routeParseError": null,
+  "answerParseError": null,
+  "activation": {
+    "path": "inputs/activation-Q5.png",
+    "sha256": "sha256:e47414276210b352b0f4fb718bb747800248f910d1db6f46cef19d95209825e0",
+    "bytes": 157754
+  },
+  "sourcePacket": {
+    "path": "inputs/09-Q5-image-sources.md",
+    "sha256": "sha256:17f0bb367faa6e5155c583e07e12eae8b2b5dc3a176ecf566a7edc81a91f7f71",
+    "bytes": 5952
+  },
+  "routeRun": {
+    "startedAt": "2026-08-06T09:51:55.111Z",
+    "finishedAt": "2026-08-06T09:52:13.798Z",
+    "durationMs": 18686,
+    "exitCode": 0,
+    "answerText": "```json\n{\"candidates\":[\"SHILU-S04\",\"SHILU-S11\",\"SHILU-S02\",\"SHILU-S01\",\"SHILU-S03\"]}\n```",
+    "usage": {
+      "tokens": {
+        "total": 25503,
+        "input": 6,
+        "output": 727,
+        "reasoning": 0,
+        "cache": {
+          "write": 24770,
+          "read": 0
+        }
+      },
+      "cost": 0.0135506,
+      "reason": "stop"
+    },
+    "stderr": null,
+    "eventParseError": null,
+    "toolProtocolError": null,
+    "rawEvents": [
+      {
+        "type": "step_start",
+        "timestamp": 1786009921340,
+        "sessionID": "ses_029836f11ffezVY41kkSRppFU5",
+        "part": {
+          "id": "prt_fd67ca735001pOZCaDYIW2a6an",
+          "messageID": "msg_fd67c91ad001N5PtdpU0waeZP5",
+          "sessionID": "ses_029836f11ffezVY41kkSRppFU5",
+          "snapshot": "68e49171bef8036721ec902edf48ec2e9c7c8e47",
+          "type": "step-start"
+        }
+      },
+      {
+        "type": "text",
+        "timestamp": 1786009933685,
+        "sessionID": "ses_029836f11ffezVY41kkSRppFU5",
+        "part": {
+          "id": "prt_fd67cd4a1001rrT18f4jhwhJ5h",
+          "messageID": "msg_fd67c91ad001N5PtdpU0waeZP5",
+          "sessionID": "ses_029836f11ffezVY41kkSRppFU5",
+          "type": "text",
+          "text": "```json\n{\"candidates\":[\"SHILU-S04\",\"SHILU-S11\",\"SHILU-S02\",\"SHILU-S01\",\"SHILU-S03\"]}\n```",
+          "time": {
+            "start": 1786009932961,
+            "end": 1786009933682
+          }
+        }
+      },
+      {
+        "type": "step_finish",
+        "timestamp": 1786009933757,
+        "sessionID": "ses_029836f11ffezVY41kkSRppFU5",
+        "part": {
+          "id": "prt_fd67cd7bb001jRKJRUvwfVXwsO",
+          "reason": "stop",
+          "snapshot": "68e49171bef8036721ec902edf48ec2e9c7c8e47",
+          "messageID": "msg_fd67c91ad001N5PtdpU0waeZP5",
+          "sessionID": "ses_029836f11ffezVY41kkSRppFU5",
+          "type": "step-finish",
+          "tokens": {
+            "total": 25503,
+            "input": 6,
+            "output": 727,
+            "reasoning": 0,
+            "cache": {
+              "write": 24770,
+              "read": 0
+            }
+          },
+          "cost": 0.0135506
+        }
+      }
+    ],
+    "rawStdout": null
+  },
+  "answerRun": {
+    "startedAt": "2026-08-06T09:52:13.799Z",
+    "finishedAt": "2026-08-06T09:52:36.088Z",
+    "durationMs": 22289,
+    "exitCode": 0,
+    "answerText": "```json\n{\"claims\":[{\"claimId\":\"Q5-C1\",\"valueKey\":\"source-rawcontent-collection-relatedentries\",\"citations\":[{\"sourceId\":\"SHILU-S11\",\"anchor\":\"DigestRequest\"}]},{\"claimId\":\"Q5-C2\",\"valueKey\":\"core-validates-and-commits\",\"citations\":[{\"sourceId\":\"SHILU-S01\",\"anchor\":\"Principles\"},{\"sourceId\":\"SHILU-S04\",\"anchor\":\"Agent Interaction\"}]}]}\n```",
+    "usage": {
+      "tokens": {
+        "total": 26632,
+        "input": 6,
+        "output": 1027,
+        "reasoning": 0,
+        "cache": {
+          "write": 25599,
+          "read": 0
+        }
+      },
+      "cost": 0.0144451,
+      "reason": "stop"
+    },
+    "stderr": null,
+    "eventParseError": null,
+    "toolProtocolError": null,
+    "rawEvents": [
+      {
+        "type": "step_start",
+        "timestamp": 1786009938465,
+        "sessionID": "ses_029832613ffewbODn62N26qNdK",
+        "part": {
+          "id": "prt_fd67cea1d001j8MJctpf4iUOYr",
+          "messageID": "msg_fd67cda9b001Q4RUnBbfhqhAeR",
+          "sessionID": "ses_029832613ffewbODn62N26qNdK",
+          "snapshot": "dc3689b16d6d9a3f5f8ab3c174176d63f742a85d",
+          "type": "step-start"
+        }
+      },
+      {
+        "type": "text",
+        "timestamp": 1786009955918,
+        "sessionID": "ses_029832613ffewbODn62N26qNdK",
+        "part": {
+          "id": "prt_fd67d27c6001LL0LFvrGMNORLp",
+          "messageID": "msg_fd67cda9b001Q4RUnBbfhqhAeR",
+          "sessionID": "ses_029832613ffewbODn62N26qNdK",
+          "type": "text",
+          "text": "```json\n{\"claims\":[{\"claimId\":\"Q5-C1\",\"valueKey\":\"source-rawcontent-collection-relatedentries\",\"citations\":[{\"sourceId\":\"SHILU-S11\",\"anchor\":\"DigestRequest\"}]},{\"claimId\":\"Q5-C2\",\"valueKey\":\"core-validates-and-commits\",\"citations\":[{\"sourceId\":\"SHILU-S01\",\"anchor\":\"Principles\"},{\"sourceId\":\"SHILU-S04\",\"anchor\":\"Agent Interaction\"}]}]}\n```",
+          "time": {
+            "start": 1786009954246,
+            "end": 1786009955914
+          }
+        }
+      },
+      {
+        "type": "step_finish",
+        "timestamp": 1786009956046,
+        "sessionID": "ses_029832613ffewbODn62N26qNdK",
+        "part": {
+          "id": "prt_fd67d2ecc001zyxbDJvbhhzogx",
+          "reason": "stop",
+          "snapshot": "dc3689b16d6d9a3f5f8ab3c174176d63f742a85d",
+          "messageID": "msg_fd67cda9b001Q4RUnBbfhqhAeR",
+          "sessionID": "ses_029832613ffewbODn62N26qNdK",
+          "type": "step-finish",
+          "tokens": {
+            "total": 26632,
+            "input": 6,
+            "output": 1027,
+            "reasoning": 0,
+            "cache": {
+              "write": 25599,
+              "read": 0
+            }
+          },
+          "cost": 0.0144451
+        }
+      }
+    ],
+    "rawStdout": null
+  }
+}

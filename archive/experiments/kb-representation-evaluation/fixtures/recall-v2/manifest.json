@@ -1,0 +1,259 @@
+{
+  "id": "shilu-associative-recall-v2",
+  "upstream": {
+    "repository": "https://github.com/lidessen/shilu",
+    "commit": "1cac9bbf3e2e10bfdb3178838fefc406236b652e",
+    "commitTime": "2026-06-03T22:46:37+08:00",
+    "statusAtCommit": "DESIGN.md is Draft"
+  },
+  "graphPolicy": {
+    "id": "corpus-bm25-concepts-v1",
+    "construction": "For each corpus-derived concept query, connect the four highest BM25 source extracts without evaluator gold.",
+    "activation": "For each user query, render the three highest BM25 concepts and their precomputed source neighbors.",
+    "activeConcepts": 3,
+    "sourcesPerConcept": 4
+  },
+  "contract": "opaque-anchor-v2",
+  "caseSets": {
+    "development": "Q1-Q6 treatment diagnostics; never held-out confirmation",
+    "confirmation": "four question-held-out cases; same frozen corpus and graph"
+  },
+  "sources": [
+    {
+      "sourceId": "SHILU-S01",
+      "locator": {
+        "repository": "https://github.com/lidessen/shilu",
+        "commit": "1cac9bbf3e2e10bfdb3178838fefc406236b652e",
+        "path": "DESIGN.md",
+        "lines": "30-39",
+        "blob": "b53ed5d09ce4ef07b67b4c7c3d528cf1039ef5fc"
+      },
+      "passages": [
+        {
+          "anchorId": "an_51c0",
+          "sha256": "sha256:140266bf38cf119730a964041d2f1c98ec8aafec7bf4fa1a7730f61aad76d557"
+        }
+      ]
+    },
+    {
+      "sourceId": "SHILU-S02",
+      "locator": {
+        "repository": "https://github.com/lidessen/shilu",
+        "commit": "1cac9bbf3e2e10bfdb3178838fefc406236b652e",
+        "path": "DESIGN.md",
+        "lines": "85-180",
+        "blob": "b53ed5d09ce4ef07b67b4c7c3d528cf1039ef5fc"
+      },
+      "passages": [
+        {
+          "anchorId": "an_1d20",
+          "sha256": "sha256:1d8d5ab2eb1e7f383a7e89f6f8bc3cafca031e103d2a07ba4d7a5e8e40130b8c"
+        },
+        {
+          "anchorId": "an_1d21",
+          "sha256": "sha256:8a682741b451a9772839c049c3feb035f7d817a8b18e012b2e4ef23e949dd610"
+        },
+        {
+          "anchorId": "an_1d22",
+          "sha256": "sha256:c47df47fdedfbd15701c1202c37ef2d941fec35bd4a4dea3c21477ee18afa012"
+        }
+      ]
+    },
+    {
+      "sourceId": "SHILU-S03",
+      "locator": {
+        "repository": "https://github.com/lidessen/shilu",
+        "commit": "1cac9bbf3e2e10bfdb3178838fefc406236b652e",
+        "path": "DESIGN.md",
+        "lines": "260-316",
+        "blob": "b53ed5d09ce4ef07b67b4c7c3d528cf1039ef5fc"
+      },
+      "passages": [
+        {
+          "anchorId": "an_0c40",
+          "sha256": "sha256:df24a8936b9c72f33f68e3ff52781bd9f228f679cd31b79a071c4fb1a5150645"
+        },
+        {
+          "anchorId": "an_0c4e",
+          "sha256": "sha256:d009330d7c84b97b1653d62d25dcabee9b6459e0cdff1f61dadfb36882c173dc"
+        }
+      ]
+    },
+    {
+      "sourceId": "SHILU-S04",
+      "locator": {
+        "repository": "https://github.com/lidessen/shilu",
+        "commit": "1cac9bbf3e2e10bfdb3178838fefc406236b652e",
+        "path": "DESIGN.md",
+        "lines": "369-458",
+        "blob": "b53ed5d09ce4ef07b67b4c7c3d528cf1039ef5fc"
+      },
+      "passages": [
+        {
+          "anchorId": "an_824e",
+          "sha256": "sha256:8d2fb5c90e9a8b39608e71e9300ecde88a5831faf7b43fbd7555ee72341a3bab"
+        },
+        {
+          "anchorId": "an_73cf",
+          "sha256": "sha256:65a0a1fed3e7fc3a480bd05f92ff2a37e00daa9dd41c962563dcc489dcaa0d6c"
+        }
+      ]
+    },
+    {
+      "sourceId": "SHILU-S05",
+      "locator": {
+        "repository": "https://github.com/lidessen/shilu",
+        "commit": "1cac9bbf3e2e10bfdb3178838fefc406236b652e",
+        "path": "DESIGN.md",
+        "lines": "545-621",
+        "blob": "b53ed5d09ce4ef07b67b4c7c3d528cf1039ef5fc"
+      },
+      "passages": [
+        {
+          "anchorId": "an_5a31",
+          "sha256": "sha256:40b93e8783732e0f7b2d4cc8f8994415ba0983c56463b905baa7d1d83f7fad36"
+        },
+        {
+          "anchorId": "an_773d",
+          "sha256": "sha256:b62bc4a365700988c156da7c0d06e69c63aaaa115860c5fc2283e42ed3fb659d"
+        }
+      ]
+    },
+    {
+      "sourceId": "SHILU-S06",
+      "locator": {
+        "repository": "https://github.com/lidessen/shilu",
+        "commit": "1cac9bbf3e2e10bfdb3178838fefc406236b652e",
+        "path": "DESIGN.md",
+        "lines": "830-842",
+        "blob": "b53ed5d09ce4ef07b67b4c7c3d528cf1039ef5fc"
+      },
+      "passages": [
+        {
+          "anchorId": "an_6c60",
+          "sha256": "sha256:223d7f56c91a80f78f3adad0c457919d84451ec70ee249396146397f20ebe0a9"
+        }
+      ]
+    },
+    {
+      "sourceId": "SHILU-S07",
+      "locator": {
+        "repository": "https://github.com/lidessen/shilu",
+        "commit": "1cac9bbf3e2e10bfdb3178838fefc406236b652e",
+        "path": "pkg/source/source.go",
+        "lines": "20-72",
+        "blob": "e9e9f53db785f48c8fbc3c006f2393150fb44a9d"
+      },
+      "passages": [
+        {
+          "anchorId": "an_7a10",
+          "sha256": "sha256:91949f3ce748720b7a5bd1f2d089be2181ba49469facd0e2b342552968ecb746"
+        },
+        {
+          "anchorId": "an_7a11",
+          "sha256": "sha256:1b23adf59dffe827a04744116c779d8b91165a938835bbe3bc5d7bfe3ab77b0e"
+        }
+      ]
+    },
+    {
+      "sourceId": "SHILU-S08",
+      "locator": {
+        "repository": "https://github.com/lidessen/shilu",
+        "commit": "1cac9bbf3e2e10bfdb3178838fefc406236b652e",
+        "path": "pkg/core/core.go",
+        "lines": "1-8",
+        "blob": "cec3aca7810276bc902dbf9b7ed8ad41f448f4b6"
+      },
+      "passages": [
+        {
+          "anchorId": "an_40c1",
+          "sha256": "sha256:9b739dbfb2374345784859321a3f80cc45338ff97f7acf3e8643036b0df9f030"
+        }
+      ]
+    },
+    {
+      "sourceId": "SHILU-S09",
+      "locator": {
+        "repository": "https://github.com/lidessen/shilu",
+        "commit": "1cac9bbf3e2e10bfdb3178838fefc406236b652e",
+        "path": "pkg/types/validation.go",
+        "lines": "82-99",
+        "blob": "dc9320998ef71cd4307998126ed09ebaf3f1c88d"
+      },
+      "passages": [
+        {
+          "anchorId": "an_98b0",
+          "sha256": "sha256:3262202cbb7a049d7945731e362c208f637e1d59523534f66895d631fe402141"
+        }
+      ]
+    },
+    {
+      "sourceId": "SHILU-S10",
+      "locator": {
+        "repository": "https://github.com/lidessen/shilu",
+        "commit": "1cac9bbf3e2e10bfdb3178838fefc406236b652e",
+        "path": "pkg/index/index.go",
+        "lines": "216-249,389-406",
+        "blob": "678986bff8df22cc53a6322354b47c30b5d0b3c8"
+      },
+      "passages": [
+        {
+          "anchorId": "an_596e",
+          "sha256": "sha256:7bec2047a735744d99648c270c93b911e66d7019990202c00d81fe2fc0056d25"
+        },
+        {
+          "anchorId": "an_29ad",
+          "sha256": "sha256:ac71640809979127f34af8779ec3da9b8fb1f758eb4858516386b63663cd48c6"
+        },
+        {
+          "anchorId": "an_aa10",
+          "sha256": "sha256:4f568d24873cc29ae242650d203161462be1df8f30867f04a7ee02795f9e7e55"
+        }
+      ]
+    },
+    {
+      "sourceId": "SHILU-S11",
+      "locator": {
+        "repository": "https://github.com/lidessen/shilu",
+        "commit": "1cac9bbf3e2e10bfdb3178838fefc406236b652e",
+        "path": "pkg/processor/types.go",
+        "lines": "9-47",
+        "blob": "4499e27846c2fe62823d9b9e2123b1cc7cf27e0f"
+      },
+      "passages": [
+        {
+          "anchorId": "an_5f10",
+          "sha256": "sha256:05be1790c02c73514d5ab3cc6f1e4961ecc82704d42bd48172fc7adbddc1f48f"
+        },
+        {
+          "anchorId": "an_6e2a",
+          "sha256": "sha256:d141f60180960d798a5f3d70837957b7ac868b1876b51353fec25d934219fe8f"
+        }
+      ]
+    },
+    {
+      "sourceId": "SHILU-S12",
+      "locator": {
+        "repository": "https://github.com/lidessen/shilu",
+        "commit": "1cac9bbf3e2e10bfdb3178838fefc406236b652e",
+        "path": "pkg/core/entries.go",
+        "lines": "11-75,208-255",
+        "blob": "28debcfa7c395a1d0767696cf9027ac52c4420fb"
+      },
+      "passages": [
+        {
+          "anchorId": "an_922b",
+          "sha256": "sha256:d7b359a80c5b984fa34cac5223bee70d447fd6dcc290196a27dc76f1316958af"
+        },
+        {
+          "anchorId": "an_d8e5",
+          "sha256": "sha256:2d49a6de0da84e2007ce2a50332be11789c045985933af79ebb2be6f3e32b921"
+        },
+        {
+          "anchorId": "an_b531",
+          "sha256": "sha256:19a5d8c3de791e03ce09f444e22b3c4068a734f1ab2d29d2e5cd68b2ed0ab0ad"
+        }
+      ]
+    }
+  ]
+}

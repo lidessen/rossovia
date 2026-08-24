@@ -1,0 +1,5 @@
+{
+  "version": "delegation-topology-probe.blind-key.v1",
+  "A": "nested-parent",
+  "B": "direct"
+}

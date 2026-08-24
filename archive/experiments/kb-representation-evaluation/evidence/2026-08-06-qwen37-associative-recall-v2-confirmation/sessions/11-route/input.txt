@@ -1,0 +1,7 @@
+# shilu-associative-recall-v2 deterministic BM25 search
+# Ranked locator-only candidates. Titles are index metadata, not evidence.
+RESULT	1	SHILU-S10	pkg/index/index.go · ftsQuery / Rebuild	16.312100
+RESULT	2	SHILU-S11	pkg/processor/types.go · DigestRequest / DigestResult	4.757298
+RESULT	3	SHILU-S04	DESIGN.md · Agent Interaction / Workflow	4.512988
+RESULT	4	SHILU-S06	DESIGN.md · Source Content	3.369221
+RESULT	5	SHILU-S03	DESIGN.md · Indexes	1.784072

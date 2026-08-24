@@ -1,0 +1,7 @@
+# shilu-associative-recall-v1 deterministic BM25 search
+# Ranked locator-only candidates. Titles are index metadata, not evidence.
+RESULT	1	SHILU-S05	DESIGN.md · MCP Writes / Validation Rules	9.325945
+RESULT	2	SHILU-S02	DESIGN.md · Source / Entry / Entry Event	4.858898
+RESULT	3	SHILU-S11	pkg/processor/types.go · DigestRequest / DigestResult	4.292102
+RESULT	4	SHILU-S06	DESIGN.md · Source Content	3.057588
+RESULT	5	SHILU-S10	pkg/index/index.go · ftsQuery / Rebuild	1.751652

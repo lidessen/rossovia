@@ -1,0 +1,63 @@
+{
+  "version": "parent-evidence-admission.semantic-candidate.v1",
+  "rubricSha256": "84f848dfac2dfdb7884dbae6413639211df60f88e02ea290d2e41e54397c3317",
+  "output": {
+    "verdict": "incompatible",
+    "findings": [
+      {
+        "artifact": "src/adapters/northstar-job-event.ts",
+        "issue": "The adapter derives `kind` from the `retryable` flag rather than from the event's declared outcome, so it emits the wrong kind for non-retryable failures and for cancellations.",
+        "evidence": [
+          "Adapter code: `kind: retryable ? \"failed\" : \"succeeded\"` in normalizeFinishedEvent",
+          "test/northstar-job-event.test.ts \"preserves non-retryable failure\" expects kind \"failed\" for outcome failed / retryable false",
+          "test/northstar-job-event.test.ts \"preserves cancellation\" expects kind \"cancelled\" for outcome cancelled",
+          "src/domain/job-transition.ts declares kind as \"succeeded\" | \"failed\" | \"cancelled\""
+        ],
+        "smallestCorrection": "In normalizeFinishedEvent, change the kind line to `kind: event.result.outcome,` (single-line change); keep retry logic as-is."
+      },
+      {
+        "artifact": "conformance/northstar-job-events-v2/case-07.json",
+        "issue": "The case's expected `kind` is non-conforming: input declares outcome failed with retryable:false, but expected kind is succeeded, contradicting the protocol outcome mapping and the repaired adapter.",
+        "evidence": [
+          "Child-report evidence: case-07 input declares outcome \"failed\", retryable false; expected kind \"succeeded\"",
+          "Protocol outcome mapping (child-report evidence) requires kind = declared outcome",
+          "Repaired adapter `kind: event.result.outcome` would emit \"failed\""
+        ],
+        "smallestCorrection": "Set case-07's expected `kind` to \"failed\" to match its declared failed outcome (maintenance artifact reconcile step; not protocol/type/test change)."
+      },
+      {
+        "artifact": "src/adapters/northstar-job-event.ts",
+        "issue": "Latent strict-conformance gap: retry eligibility is gated only on retryable===true, not also on outcome===\"failed\", so a succeeded/cancelled event carrying retryable:true would be marked eligible, contradicting the protocol that only failed+retryable is eligible.",
+        "evidence": [
+          "Adapter code: `retry: retryable ? \"eligible\" : \"none\"` with `retryable = event.result.retryable === true`",
+          "NorthstarFinishedEvent.result permits retryable on any outcome",
+          "Protocol (child-report evidence) says only a failed result with retryable:true is eligible",
+          "No bundled test exercises this combination"
+        ],
+        "smallestCorrection": "Defensive gate only: no change needed to pass current tests; optionally change to `kind === \"failed\" && retryable ? \"eligible\" : \"none\"` (semantic review recommended)."
+      }
+    ],
+    "preservedContracts": [
+      "src/domain/job-transition.ts (public domain type, unchanged)",
+      "NorthstarFinishedEvent adapter input type (unchanged)",
+      "test/northstar-job-event.test.ts (all four bundled tests unchanged)",
+      "docs/northstar-job-events-v2.md protocol text (unchanged)"
+    ],
+    "mechanicalEvidence": [
+      "Read every file in granted scope: src/adapters/northstar-job-event.ts, src/domain/job-transition.ts, test/northstar-job-event.test.ts, TASK.md, todo.md, package.json, tsconfig.json",
+      "Line-by-line comparison of adapter output against each of the four bundled test expectations; adapter fails \"preserves non-retryable failure\" and \"preserves cancellation\"",
+      "Confirmed tsconfig strict mode and that no command executables (bun test) were run; tests not executed"
+    ],
+    "semanticReviewNeeded": [
+      "Whether retry eligibility should additionally gate on outcome === \"failed\" for full protocol conformance on untested inputs",
+      "Conformance case-07 full content (occurredAt, jobId, retry, and all other fields) for cross-artifact consistency — raw file not in granted read scope; only the child report's kind claim admitted",
+      "Actual `bun test` execution to confirm the inferred passing state"
+    ],
+    "withheldAuthority": "No durable acceptance authority held. `bun test` pass/fail must be verified by execution (not available in this cell), and the protocol doc and conformance case must be re-verified at their owning source (docs/northstar-job-events-v2.md and conformance/northstar-job-events-v2/case-07.json), which are outside granted read scope.",
+    "uncertainties": [
+      "Could not run `bun test`; pass state is inferred, not executed",
+      "Could not directly read docs/northstar-job-events-v2.md or conformance/northstar-job-events-v2/case-07.json; claims about them rely on the admissible child report",
+      "Case-07 reconcile correction and any other case fields could not be verified against raw file content"
+    ]
+  }
+}

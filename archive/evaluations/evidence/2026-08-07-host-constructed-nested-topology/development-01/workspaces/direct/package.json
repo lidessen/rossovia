@@ -1,0 +1,7 @@
+{
+  "name": "todo-return-trigger-northstar-fixture",
+  "private": true,
+  "scripts": {
+    "test": "bun test"
+  }
+}

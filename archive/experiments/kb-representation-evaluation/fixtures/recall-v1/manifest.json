@@ -1,0 +1,156 @@
+{
+  "id": "shilu-associative-recall-v1",
+  "upstream": {
+    "repository": "https://github.com/lidessen/shilu",
+    "commit": "1cac9bbf3e2e10bfdb3178838fefc406236b652e",
+    "commitTime": "2026-06-03T22:46:37+08:00",
+    "statusAtCommit": "DESIGN.md is Draft"
+  },
+  "graphPolicy": {
+    "id": "corpus-bm25-concepts-v1",
+    "construction": "For each corpus-derived concept query, connect the four highest BM25 source extracts without evaluator gold.",
+    "activation": "For each user query, render the three highest BM25 concepts and their precomputed source neighbors.",
+    "activeConcepts": 3,
+    "sourcesPerConcept": 4
+  },
+  "concepts": [
+    {
+      "id": "C01",
+      "label": "事实权 / authority",
+      "query": "authority source of truth evidence final operation concrete source"
+    },
+    {
+      "id": "C02",
+      "label": "索引 / recall projection",
+      "query": "index recall search rebuild sqlite vector graph candidate projection"
+    },
+    {
+      "id": "C03",
+      "label": "来源 / provenance",
+      "query": "provenance source actor human agent validation reference"
+    },
+    {
+      "id": "C04",
+      "label": "Agent proposal",
+      "query": "agent provider digest proposal operations raw content related entries"
+    },
+    {
+      "id": "C05",
+      "label": "deterministic commit",
+      "query": "core validate commit mutation persist event index"
+    },
+    {
+      "id": "C06",
+      "label": "supersession / audit",
+      "query": "supersede superseded newer older lineage audit event rollback"
+    },
+    {
+      "id": "C07",
+      "label": "uncertainty / review",
+      "query": "review confidence conflict duplicate uncertainty possible"
+    },
+    {
+      "id": "C08",
+      "label": "self-contained evidence",
+      "query": "copy source file raw path self contained moved disappears store raw"
+    }
+  ],
+  "sources": [
+    {
+      "id": "SHILU-S01",
+      "title": "DESIGN.md · Principles",
+      "path": "DESIGN.md",
+      "anchor": "Principles",
+      "lines": "30-39",
+      "blob": "b53ed5d09ce4ef07b67b4c7c3d528cf1039ef5fc"
+    },
+    {
+      "id": "SHILU-S02",
+      "title": "DESIGN.md · Source / Entry / Entry Event",
+      "path": "DESIGN.md",
+      "anchor": "Source / Entry / Entry Event",
+      "lines": "85-180",
+      "blob": "b53ed5d09ce4ef07b67b4c7c3d528cf1039ef5fc"
+    },
+    {
+      "id": "SHILU-S03",
+      "title": "DESIGN.md · Indexes",
+      "path": "DESIGN.md",
+      "anchor": "Indexes / Vector Index / Graph Index",
+      "lines": "260-316",
+      "blob": "b53ed5d09ce4ef07b67b4c7c3d528cf1039ef5fc"
+    },
+    {
+      "id": "SHILU-S04",
+      "title": "DESIGN.md · Agent Interaction / Workflow",
+      "path": "DESIGN.md",
+      "anchor": "Agent Interaction / Incremental Knowledge Workflow",
+      "lines": "369-458",
+      "blob": "b53ed5d09ce4ef07b67b4c7c3d528cf1039ef5fc"
+    },
+    {
+      "id": "SHILU-S05",
+      "title": "DESIGN.md · MCP Writes / Validation Rules",
+      "path": "DESIGN.md",
+      "anchor": "MCP Writes: Job-Scoped Claims Required / Validation Rules",
+      "lines": "545-621",
+      "blob": "b53ed5d09ce4ef07b67b4c7c3d528cf1039ef5fc"
+    },
+    {
+      "id": "SHILU-S06",
+      "title": "DESIGN.md · Source Content",
+      "path": "DESIGN.md",
+      "anchor": "Source Content: Copy-on-Add by Default, Opt-Out Reference",
+      "lines": "830-842",
+      "blob": "b53ed5d09ce4ef07b67b4c7c3d528cf1039ef5fc"
+    },
+    {
+      "id": "SHILU-S07",
+      "title": "pkg/source/source.go · Normalize / StoreRaw",
+      "path": "pkg/source/source.go",
+      "anchor": "Normalize / StoreRaw",
+      "lines": "20-72",
+      "blob": "e9e9f53db785f48c8fbc3c006f2393150fb44a9d"
+    },
+    {
+      "id": "SHILU-S08",
+      "title": "pkg/core/core.go · Core invariant",
+      "path": "pkg/core/core.go",
+      "anchor": "Core invariant",
+      "lines": "1-8",
+      "blob": "cec3aca7810276bc902dbf9b7ed8ad41f448f4b6"
+    },
+    {
+      "id": "SHILU-S09",
+      "title": "pkg/types/validation.go · ValidateEntry",
+      "path": "pkg/types/validation.go",
+      "anchor": "ValidateEntry",
+      "lines": "82-99",
+      "blob": "dc9320998ef71cd4307998126ed09ebaf3f1c88d"
+    },
+    {
+      "id": "SHILU-S10",
+      "title": "pkg/index/index.go · ftsQuery / Rebuild",
+      "path": "pkg/index/index.go",
+      "anchor": "ftsQuery / Catalog.Rebuild",
+      "lines": "216-249,389-406",
+      "blob": "678986bff8df22cc53a6322354b47c30b5d0b3c8"
+    },
+    {
+      "id": "SHILU-S11",
+      "title": "pkg/processor/types.go · DigestRequest / DigestResult",
+      "path": "pkg/processor/types.go",
+      "anchor": "DigestRequest / DigestResult",
+      "lines": "9-47",
+      "blob": "4499e27846c2fe62823d9b9e2123b1cc7cf27e0f"
+    },
+    {
+      "id": "SHILU-S12",
+      "title": "pkg/core/entries.go · CreateEntry / SupersedeEntry",
+      "path": "pkg/core/entries.go",
+      "anchor": "CreateEntry / SupersedeEntry",
+      "lines": "11-75,208-255",
+      "blob": "28debcfa7c395a1d0767696cf9027ac52c4420fb"
+    }
+  ]
+}

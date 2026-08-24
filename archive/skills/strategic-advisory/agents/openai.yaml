@@ -1,0 +1,4 @@
+interface:
+  display_name: "Strategic Advisory"
+  short_description: "Turn phase evidence into a human-reviewable Strategy Case."
+  default_prompt: "Use $strategic-advisory to prepare a strategic recommendation from this completed phase's verified evidence."

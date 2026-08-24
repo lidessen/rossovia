@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1000" viewBox="0 0 1600 1000">
+<style>
+  svg { background: #fbfaf7; }
+  line { stroke: #9aa8a0; stroke-width: 3; opacity: .72; }
+  text { text-anchor: middle; font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif; }
+  .concept rect { fill: #fff0c9; stroke: #9b6e16; stroke-width: 2.5; }
+  .concept text { fill: #583a00; font-size: 19px; font-weight: 650; }
+  .source rect { fill: #eaf3ee; stroke: #315f4d; stroke-width: 2.5; }
+  .source .id { fill: #173b2d; font-size: 19px; font-weight: 750; }
+  .source .label { fill: #24483b; font-size: 16px; }
+  .header { text-anchor: start; }
+</style>
+<rect width="1600" height="1000" fill="#fbfaf7"/>
+<text x="60" y="52" class="header" font-size="27" font-weight="750" fill="#173b2d">Shilu associative recall v2 · V2-Q4 query activation</text>
+<text x="60" y="82" class="header" font-size="17" fill="#53645c">V2 corpus-derived lossy routing projection — open selected sources before answering or citing</text>
+<line x1="390" y1="539" x2="650" y2="668.6666666666667"/>
+<line x1="390" y1="539" x2="650" y2="162"/>
+<line x1="390" y1="539" x2="650" y2="415.33333333333337"/>
+<line x1="390" y1="539" x2="1120" y2="415.33333333333337"/>
+<line x1="390" y1="199" x2="1120" y2="668.6666666666667"/>
+<line x1="390" y1="199" x2="1120" y2="922"/>
+<line x1="390" y1="199" x2="650" y2="162"/>
+<line x1="390" y1="199" x2="650" y2="922"/>
+<line x1="390" y1="879" x2="650" y2="415.33333333333337"/>
+<line x1="390" y1="879" x2="1120" y2="922"/>
+<line x1="390" y1="879" x2="650" y2="668.6666666666667"/>
+<line x1="390" y1="879" x2="1120" y2="162"/>
+<g class="concept" transform="translate(90 160)"><rect width="300" height="78" rx="18"/><text x="150" y="47">deterministic commit</text></g>
+<g class="concept" transform="translate(90 500)"><rect width="300" height="78" rx="18"/><text x="150" y="47">事实权 / authority</text></g>
+<g class="concept" transform="translate(90 840)"><rect width="300" height="78" rx="18"/><text x="150" y="47">supersession / audit</text></g>
+<g class="source" transform="translate(650 120)"><rect width="360" height="84" rx="16"/><text x="180" y="31" class="id">SHILU-S01</text><text x="180" y="59" class="label">DESIGN.md · Principles</text></g>
+<g class="source" transform="translate(650 373.33333333333337)"><rect width="360" height="84" rx="16"/><text x="180" y="31" class="id">SHILU-S02</text><text x="180" y="59" class="label">DESIGN.md · Source / Entry / Entry Event</text></g>
+<g class="source" transform="translate(650 626.6666666666667)"><rect width="360" height="84" rx="16"/><text x="180" y="31" class="id">SHILU-S03</text><text x="180" y="59" class="label">DESIGN.md · Indexes</text></g>
+<g class="source" transform="translate(650 880)"><rect width="360" height="84" rx="16"/><text x="180" y="31" class="id">SHILU-S04</text><text x="180" y="59" class="label">DESIGN.md · Agent Interaction / Workflow</text></g>
+<g class="source" transform="translate(1120 120)"><rect width="360" height="84" rx="16"/><text x="180" y="31" class="id">SHILU-S05</text><text x="180" y="59" class="label">DESIGN.md · MCP Writes / Validation Rules</text></g>
+<g class="source" transform="translate(1120 373.33333333333337)"><rect width="360" height="84" rx="16"/><text x="180" y="31" class="id">SHILU-S06</text><text x="180" y="59" class="label">DESIGN.md · Source Content</text></g>
+<g class="source" transform="translate(1120 626.6666666666667)"><rect width="360" height="84" rx="16"/><text x="180" y="31" class="id">SHILU-S08</text><text x="180" y="59" class="label">pkg/core/core.go · Core invariant</text></g>
+<g class="source" transform="translate(1120 880)"><rect width="360" height="84" rx="16"/><text x="180" y="31" class="id">SHILU-S12</text><text x="180" y="59" class="label">pkg/core/entries.go · CreateEntry / SupersedeEntry</text></g>
+</svg>

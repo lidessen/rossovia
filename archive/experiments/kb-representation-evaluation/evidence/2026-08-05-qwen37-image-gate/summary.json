@@ -1,0 +1,108 @@
+{
+  "evidenceId": "2026-08-05-qwen37-image-gate",
+  "status": "probe",
+  "profile": {
+    "evidenceId": "2026-08-05-qwen37-image-gate",
+    "model": "opencode-go/qwen3.7-plus",
+    "executor": "opencode run --pure --format json",
+    "opencodeVersion": "1.18.13",
+    "condition": "image",
+    "profilePolicy": "new session per trial; default model variant; image attachment only; no filesystem or tools requested",
+    "order": [
+      "sparse",
+      "medium",
+      "dense",
+      "dense",
+      "medium",
+      "sparse",
+      "medium",
+      "sparse",
+      "dense"
+    ]
+  },
+  "aggregate": {
+    "trials": 9,
+    "passed": 63,
+    "questions": 72,
+    "accuracy": 0.875,
+    "failures": {
+      "indegree": 6,
+      "fanout": 3
+    },
+    "latencyMs": {
+      "mean": 18418.555555555555,
+      "min": 14182,
+      "max": 22767
+    },
+    "observedCost": {
+      "total": 0.1215691,
+      "mean": 0.013507677777777777,
+      "min": 0.0130999,
+      "max": 0.0140164
+    },
+    "tokens": {
+      "total": 229179,
+      "input": 54,
+      "output": 6350,
+      "reasoning": 0,
+      "cacheWrite": 222775,
+      "cacheRead": 0
+    },
+    "inputBytes": {
+      "sparse": 63851,
+      "medium": 87769,
+      "dense": 123439
+    },
+    "parseFailures": 0
+  },
+  "totals": {
+    "sparse": {
+      "trials": 3,
+      "passed": 24,
+      "questions": 24,
+      "durationsMs": [
+        20052,
+        14388,
+        22176
+      ],
+      "costs": [
+        0.0136509,
+        0.013229,
+        0.0139774
+      ],
+      "parseFailures": 0
+    },
+    "medium": {
+      "trials": 3,
+      "passed": 21,
+      "questions": 24,
+      "durationsMs": [
+        19189,
+        18798,
+        22767
+      ],
+      "costs": [
+        0.013455,
+        0.0136313,
+        0.0140164
+      ],
+      "parseFailures": 0
+    },
+    "dense": {
+      "trials": 3,
+      "passed": 18,
+      "questions": 24,
+      "durationsMs": [
+        14503,
+        14182,
+        19712
+      ],
+      "costs": [
+        0.0130999,
+        0.0131361,
+        0.0133731
+      ],
+      "parseFailures": 0
+    }
+  }
+}

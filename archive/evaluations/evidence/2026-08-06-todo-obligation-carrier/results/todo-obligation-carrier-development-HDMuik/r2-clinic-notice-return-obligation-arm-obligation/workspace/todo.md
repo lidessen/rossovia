@@ -1,0 +1,3 @@
+- [x] Item 1 — Primary notice: replace promotional draft.md with a source-faithful clinic notice.
+- [x] Item 2 — Return obligation: update appointments-index.md so routing, triage, trial, and capacity statements agree with source.md and draft.md.
+- [x] Item 3 — Whole-task reconciliation: inspect source.md, draft.md, and appointments-index.md together before settlement.

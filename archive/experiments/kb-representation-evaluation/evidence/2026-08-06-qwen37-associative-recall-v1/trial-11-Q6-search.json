@@ -1,0 +1,275 @@
+{
+  "trial": 11,
+  "question": {
+    "id": "Q6",
+    "prompt": "The SQLite search database is lost. Which durable material is sufficient to restore recall in the design, and what does the implemented rebuild actually consume?"
+  },
+  "condition": "search",
+  "route": {
+    "candidates": [
+      "SHILU-S10",
+      "SHILU-S03",
+      "SHILU-S06",
+      "SHILU-S08",
+      "SHILU-S04"
+    ]
+  },
+  "answer": {
+    "claims": [
+      {
+        "claimId": "Q6-C1",
+        "valueKey": "sources-entries-events",
+        "citations": [
+          {
+            "sourceId": "SHILU-S03",
+            "anchor": "Indexes"
+          }
+        ]
+      },
+      {
+        "claimId": "Q6-C2",
+        "valueKey": "provided-entry-list",
+        "citations": [
+          {
+            "sourceId": "SHILU-S10",
+            "anchor": "ftsQuery / Catalog.Rebuild"
+          }
+        ]
+      }
+    ]
+  },
+  "score": {
+    "gold": [
+      "SHILU-S03",
+      "SHILU-S10"
+    ],
+    "candidates": [
+      "SHILU-S10",
+      "SHILU-S03",
+      "SHILU-S06",
+      "SHILU-S08",
+      "SHILU-S04"
+    ],
+    "hitAt1": true,
+    "hitAt3": true,
+    "hitAt5": true,
+    "recallAt1": 0.5,
+    "recallAt3": 1,
+    "recallAt5": 1,
+    "allRequiredHitAt3": true,
+    "allRequiredHitAt5": true,
+    "reciprocalRank": 1,
+    "openedSources": 5,
+    "answerAccuracy": 1,
+    "citationPrecision": 0.5,
+    "citationCoverage": 0.5,
+    "protocolValid": true,
+    "groundedSuccess": false,
+    "claimResults": [
+      {
+        "claimId": "Q6-C1",
+        "expectedKey": "sources-entries-events",
+        "actualKey": "sources-entries-events",
+        "answerCorrect": true,
+        "citations": [
+          {
+            "sourceId": "SHILU-S03",
+            "anchor": "Indexes",
+            "locatable": false,
+            "opened": true,
+            "supportsClaim": true,
+            "correct": false
+          }
+        ],
+        "hasCorrectCitation": false
+      },
+      {
+        "claimId": "Q6-C2",
+        "expectedKey": "provided-entry-list",
+        "actualKey": "provided-entry-list",
+        "answerCorrect": true,
+        "citations": [
+          {
+            "sourceId": "SHILU-S10",
+            "anchor": "ftsQuery / Catalog.Rebuild",
+            "locatable": true,
+            "opened": true,
+            "supportsClaim": true,
+            "correct": true
+          }
+        ],
+        "hasCorrectCitation": true
+      }
+    ]
+  },
+  "routeParseError": null,
+  "answerParseError": null,
+  "activation": {
+    "path": "inputs/search-Q6.txt",
+    "sha256": "sha256:e4ff2d17abd7312e1056611fa84795744405800498e1e202b5287717ac099d4c",
+    "bytes": 438
+  },
+  "sourcePacket": {
+    "path": "inputs/11-Q6-search-sources.md",
+    "sha256": "sha256:42d6a7e2862d2a90cd10217e8b8de81d911738acb2aacf268049956aa8cfa73a",
+    "bytes": 5741
+  },
+  "routeRun": {
+    "startedAt": "2026-08-06T09:53:02.742Z",
+    "finishedAt": "2026-08-06T09:53:14.664Z",
+    "durationMs": 11923,
+    "exitCode": 0,
+    "answerText": "{\"candidates\":[\"SHILU-S10\",\"SHILU-S03\",\"SHILU-S06\",\"SHILU-S08\",\"SHILU-S04\"]}",
+    "usage": {
+      "tokens": {
+        "total": 23962,
+        "input": 6,
+        "output": 465,
+        "reasoning": 0,
+        "cache": {
+          "write": 23491,
+          "read": 0
+        }
+      },
+      "cost": 0.0124919,
+      "reason": "stop"
+    },
+    "stderr": null,
+    "eventParseError": null,
+    "toolProtocolError": null,
+    "rawEvents": [
+      {
+        "type": "step_start",
+        "timestamp": 1786009986624,
+        "sessionID": "ses_0298266e1ffebkRJGYtFDFQh5y",
+        "part": {
+          "id": "prt_fd67da63d001h2LjsWVvw2F3ln",
+          "messageID": "msg_fd67d99c9001EPIpJ2f0lyzLUK",
+          "sessionID": "ses_0298266e1ffebkRJGYtFDFQh5y",
+          "snapshot": "a32b0e19a910daf8f75a623e73776a558ab530ba",
+          "type": "step-start"
+        }
+      },
+      {
+        "type": "text",
+        "timestamp": 1786009994538,
+        "sessionID": "ses_0298266e1ffebkRJGYtFDFQh5y",
+        "part": {
+          "id": "prt_fd67dc2d2001cKZQLrN4D1hwhT",
+          "messageID": "msg_fd67d99c9001EPIpJ2f0lyzLUK",
+          "sessionID": "ses_0298266e1ffebkRJGYtFDFQh5y",
+          "type": "text",
+          "text": "{\"candidates\":[\"SHILU-S10\",\"SHILU-S03\",\"SHILU-S06\",\"SHILU-S08\",\"SHILU-S04\"]}",
+          "time": {
+            "start": 1786009993938,
+            "end": 1786009994535
+          }
+        }
+      },
+      {
+        "type": "step_finish",
+        "timestamp": 1786009994624,
+        "sessionID": "ses_0298266e1ffebkRJGYtFDFQh5y",
+        "part": {
+          "id": "prt_fd67dc57e001gSzbWZ6Ld7yLUB",
+          "reason": "stop",
+          "snapshot": "a32b0e19a910daf8f75a623e73776a558ab530ba",
+          "messageID": "msg_fd67d99c9001EPIpJ2f0lyzLUK",
+          "sessionID": "ses_0298266e1ffebkRJGYtFDFQh5y",
+          "type": "step-finish",
+          "tokens": {
+            "total": 23962,
+            "input": 6,
+            "output": 465,
+            "reasoning": 0,
+            "cache": {
+              "write": 23491,
+              "read": 0
+            }
+          },
+          "cost": 0.0124919
+        }
+      }
+    ],
+    "rawStdout": null
+  },
+  "answerRun": {
+    "startedAt": "2026-08-06T09:53:14.665Z",
+    "finishedAt": "2026-08-06T09:53:26.479Z",
+    "durationMs": 11814,
+    "exitCode": 0,
+    "answerText": "{\"claims\":[{\"claimId\":\"Q6-C1\",\"valueKey\":\"sources-entries-events\",\"citations\":[{\"sourceId\":\"SHILU-S03\",\"anchor\":\"Indexes\"}]},{\"claimId\":\"Q6-C2\",\"valueKey\":\"provided-entry-list\",\"citations\":[{\"sourceId\":\"SHILU-S10\",\"anchor\":\"ftsQuery / Catalog.Rebuild\"}]}]}",
+    "usage": {
+      "tokens": {
+        "total": 26084,
+        "input": 6,
+        "output": 387,
+        "reasoning": 0,
+        "cache": {
+          "write": 25691,
+          "read": 0
+        }
+      },
+      "cost": 0.0134671,
+      "reason": "stop"
+    },
+    "stderr": null,
+    "eventParseError": null,
+    "toolProtocolError": null,
+    "rawEvents": [
+      {
+        "type": "step_start",
+        "timestamp": 1786009999730,
+        "sessionID": "ses_02982384effeXa00kcz1eLrD7x",
+        "part": {
+          "id": "prt_fd67dd96d001t2wFy06UwED4hG",
+          "messageID": "msg_fd67dc85b001gDer7JuEXT5vOc",
+          "sessionID": "ses_02982384effeXa00kcz1eLrD7x",
+          "snapshot": "2299f6f1f8c5f4717d8304bea5c984dc06f1d72f",
+          "type": "step-start"
+        }
+      },
+      {
+        "type": "text",
+        "timestamp": 1786010006332,
+        "sessionID": "ses_02982384effeXa00kcz1eLrD7x",
+        "part": {
+          "id": "prt_fd67dee51001dp1ZLz7tGhM4nR",
+          "messageID": "msg_fd67dc85b001gDer7JuEXT5vOc",
+          "sessionID": "ses_02982384effeXa00kcz1eLrD7x",
+          "type": "text",
+          "text": "{\"claims\":[{\"claimId\":\"Q6-C1\",\"valueKey\":\"sources-entries-events\",\"citations\":[{\"sourceId\":\"SHILU-S03\",\"anchor\":\"Indexes\"}]},{\"claimId\":\"Q6-C2\",\"valueKey\":\"provided-entry-list\",\"citations\":[{\"sourceId\":\"SHILU-S10\",\"anchor\":\"ftsQuery / Catalog.Rebuild\"}]}]}",
+          "time": {
+            "start": 1786010005073,
+            "end": 1786010006329
+          }
+        }
+      },
+      {
+        "type": "step_finish",
+        "timestamp": 1786010006438,
+        "sessionID": "ses_02982384effeXa00kcz1eLrD7x",
+        "part": {
+          "id": "prt_fd67df3a3001Z58Ld6aDwgRgy6",
+          "reason": "stop",
+          "snapshot": "2299f6f1f8c5f4717d8304bea5c984dc06f1d72f",
+          "messageID": "msg_fd67dc85b001gDer7JuEXT5vOc",
+          "sessionID": "ses_02982384effeXa00kcz1eLrD7x",
+          "type": "step-finish",
+          "tokens": {
+            "total": 26084,
+            "input": 6,
+            "output": 387,
+            "reasoning": 0,
+            "cache": {
+              "write": 25691,
+              "read": 0
+            }
+          },
+          "cost": 0.0134671
+        }
+      }
+    ],
+    "rawStdout": null
+  }
+}

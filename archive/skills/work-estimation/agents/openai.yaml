@@ -1,0 +1,4 @@
+interface:
+  display_name: "Work Estimation"
+  short_description: "Estimate necessary work before converting it into agent budgets."
+  default_prompt: "Use $work-estimation to compare the necessary work, discovery branches, and tolerances before choosing a budget."

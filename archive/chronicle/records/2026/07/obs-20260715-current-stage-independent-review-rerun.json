@@ -1,0 +1,130 @@
+{
+  "id": "obs-20260715-current-stage-independent-review-rerun",
+  "schema": "observation-record.v1",
+  "kind": "review",
+  "occurredAt": "2026-07-15T14:38:04.411Z",
+  "recordedAt": "2026-07-15T14:41:13Z",
+  "subject": {
+    "type": "work-cell-run",
+    "id": "d2325780-4f66-4e06-8822-186231b51b9b"
+  },
+  "observations": [
+    {
+      "name": "terminal-status",
+      "value": "passed"
+    },
+    {
+      "name": "terminal-tool-called",
+      "value": "submit_review"
+    },
+    {
+      "name": "structured-output-verified",
+      "value": true
+    },
+    {
+      "name": "reported-input-tokens",
+      "value": 1626189,
+      "unit": "tokens"
+    },
+    {
+      "name": "reported-cached-input-tokens",
+      "value": 1412864,
+      "unit": "tokens"
+    },
+    {
+      "name": "reported-output-tokens",
+      "value": 7654,
+      "unit": "tokens"
+    },
+    {
+      "name": "reported-total-tokens",
+      "value": 1633843,
+      "unit": "tokens"
+    },
+    {
+      "name": "actual-to-revised-estimate-ratio",
+      "value": 0.495104,
+      "unit": "ratio"
+    },
+    {
+      "name": "price-revision-estimated-cost",
+      "value": 0.035965,
+      "unit": "USD"
+    },
+    {
+      "name": "raw-recommendation",
+      "value": "open_integration_pr"
+    },
+    {
+      "name": "raw-return-partitions",
+      "value": "C"
+    },
+    {
+      "name": "raw-findings",
+      "value": 6,
+      "unit": "findings"
+    },
+    {
+      "name": "self-retracted-findings",
+      "value": 4,
+      "unit": "findings"
+    },
+    {
+      "name": "preparation-confirmed-decision-changing-findings",
+      "value": 0,
+      "unit": "findings"
+    },
+    {
+      "name": "preparation-confirmed-low-risk-residuals",
+      "value": 1,
+      "unit": "findings"
+    },
+    {
+      "name": "recommendation-partition-consistency",
+      "value": false
+    },
+    {
+      "name": "site-verification",
+      "value": "build passed with zero diagnostics and eight generated pages"
+    }
+  ],
+  "method": {
+    "kind": "normalization",
+    "name": "Work Cell review receipt plus preparation-group finding verification",
+    "version": "v1",
+    "limitations": [
+      "The independent reviewer was read-only and did not execute tests or inspect the target diff directly.",
+      "The raw run record is retained locally rather than committed because it is approximately 14.9 MB; this receipt preserves its digest and decision-relevant observations.",
+      "Structured schema validity did not enforce semantic agreement among findings, partition dispositions, and the final recommendation."
+    ]
+  },
+  "provenance": {
+    "sourceRole": "derived",
+    "sources": [
+      {
+        "locator": "work-cell-run://d2325780-4f66-4e06-8822-186231b51b9b/current-stage-independent-review-authorized-rerun.cell.run.json",
+        "role": "raw",
+        "sha256": "2a11142e4e013113cebe2982e34ccc403694bba4f86cc53b33757c094dbb3161"
+      },
+      {
+        "locator": "git://experiment/activation-field-scale/d66a125d04ad8294dbfe6742ba007ab9a5f3015b",
+        "role": "supporting"
+      }
+    ]
+  },
+  "quality": {
+    "status": "reviewed",
+    "limitations": [
+      "The receipt distinguishes provider output from preparation verification; neither is a Principal integration or merge decision."
+    ]
+  },
+  "observer": {
+    "kind": "agent",
+    "id": "codex-primary-session"
+  },
+  "recorder": {
+    "kind": "agent",
+    "id": "codex-primary-session"
+  },
+  "classification": "internal"
+}

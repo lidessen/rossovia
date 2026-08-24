@@ -1,0 +1,113 @@
+I’d organize this around ownership boundaries and the persistence contract, not mechanically assign one agent to every named surface. The parser, read compatibility, and write behavior form one coupled decision and need a single owner. The other surfaces can proceed in parallel once that contract is explicit.
+
+### Shared contract established first
+
+Before delegation, I would record these invariants:
+
+- Canonical in-memory and serialized field: `revision`.
+- Readers accept both `revision` and legacy `taskRevision`.
+- If both fields exist:
+  - Accept when values agree.
+  - Reject or explicitly flag the record when values conflict; do not silently choose.
+- Writers emit `revision` only—never `taskRevision`.
+- CLI and UI expose only the canonical name.
+- Compatibility lasts for one release; the legacy-read branch should be easy to remove afterward.
+- No unrelated renaming of concepts, flags, or API fields without explicit evidence that they represent this persisted field.
+
+### Delegation packets
+
+#### Agent 1 — Persistence/parser contract owner
+
+Owns all schema, model, parser, serializer, fixture, and migration-boundary edits.
+
+Packet:
+
+> Rename the canonical task-record field from `taskRevision` to `revision`. Implement one-release backward-compatible reads: accept legacy-only records and normalize them to `revision`; ensure every write/serialization path emits only `revision`. Define and test behavior for records containing both names, including conflicts. Search for alternate write paths, defaults, validation, copying, patching, and fixture factories. Report the precise compatibility behavior and every changed persistence entry point.
+
+This agent owns the key semantic decisions. Other agents must not independently invent fallback or precedence logic.
+
+#### Agent 2 — CLI owner
+
+Owns CLI presentation and CLI-specific tests.
+
+Packet:
+
+> Update task-related CLI output to use `revision` and remove user-visible `taskRevision`. Consume the canonical parsed model; do not add separate legacy compatibility logic. Check human-readable output, JSON/structured output, table headings, filters/templates, snapshots, and help text. New structured output must contain only `revision`. Report any CLI input or output that appears to be a public compatibility boundary before changing its semantics.
+
+If the CLI writes task records, that write path is coordinated with Agent 1; Agent 1 owns serialization behavior, while Agent 2 owns CLI invocation and presentation.
+
+#### Agent 3 — Workbench UI owner
+
+Owns UI components, selectors, client types, state handling, and UI tests.
+
+Packet:
+
+> Replace Workbench use of `taskRevision` with `revision`, assuming data has already been normalized by the parser/API boundary. Update props, selectors, state, labels, fixtures, mocks, and snapshots. Do not carry both names through application state unless an external boundary demonstrably bypasses normalization. Verify loading and displaying a normalized legacy record. Report any API contract or generated type that requires coordination.
+
+Agent 3 should not introduce UI-level fallbacks such as `revision ?? taskRevision`; compatibility belongs at the ingestion boundary.
+
+#### Agent 4 — Cross-cutting audit and verification owner
+
+Starts read-only while the first three edit their owned areas, avoiding conflicting changes.
+
+Packet:
+
+> Build a repository-wide inventory of `taskRevision`, `revision`, task-record read/write paths, generated artifacts, snapshots, documentation, and release notes. Identify missed consumers and tests, especially direct persistence reads or writes that bypass the primary parser. Prepare an integration verification matrix. After the primary patches land, own narrowly scoped residual edits only when assigned; do not modify files owned by Agents 1–3 without coordination.
+
+This is more useful than giving a fourth agent a loosely defined “tests” surface, because tests should normally be updated alongside the behavior they specify.
+
+### Edit and decision ownership
+
+- Each production file has one editing owner.
+- Each behavior change is accompanied by tests from the same owner.
+- Agent 1 is the decision owner for:
+  - normalization;
+  - dual-field handling;
+  - validation and error behavior;
+  - canonical serialization;
+  - compatibility removal markers.
+- CLI output decisions belong to Agent 2, except persistence semantics.
+- UI state and display decisions belong to Agent 3, except ingestion semantics.
+- Agent 4 owns the inventory and final matrix, not broad cleanup by default.
+- Shared/generated files are assigned explicitly after the audit. No two agents edit them concurrently.
+- Any unexpected public API, command-line input, or external integration boundary is escalated to the lead rather than silently reinterpreted.
+
+### Reconciliation
+
+I would integrate the persistence/parser change first because it establishes the canonical model. CLI and UI work can be developed in parallel against the written contract, then rebased or adjusted to the actual parser interface.
+
+During reconciliation, I would:
+
+1. Review Agent 1’s read/write behavior and compatibility tests first.
+2. Confirm CLI and UI consume normalized `revision` rather than duplicating legacy handling.
+3. Use Agent 4’s inventory to classify every remaining `taskRevision` occurrence:
+   - intentional compatibility reader;
+   - legacy test fixture;
+   - migration/release documentation;
+   - defect requiring removal.
+4. Resolve shared fixtures and generated types under a single temporary owner.
+5. Inspect the combined diff for accidental writes of both fields, silent conflict precedence, and stale user-visible names.
+6. Add a clearly scoped removal note for the next release, tied to the compatibility code and tests.
+
+### Verification matrix
+
+At minimum, the integrated suite must prove:
+
+| Scenario | Expected result |
+|---|---|
+| Record with only `revision` | Reads successfully |
+| Record with only `taskRevision` | Reads successfully and normalizes to `revision` |
+| Legacy record read and rewritten | Output contains `revision` only |
+| Record with both, equal values | Deterministic documented behavior |
+| Record with both, conflicting values | Explicit rejection or diagnostic |
+| Newly created record | Persists only `revision` |
+| Updated existing legacy record | Persists only `revision` |
+| CLI human output | Shows canonical terminology |
+| CLI structured output | Contains `revision`, never `taskRevision` |
+| Workbench with canonical record | Displays and updates correctly |
+| Workbench with normalized legacy record | Displays correctly |
+| Repository search | Old name remains only in intentional compatibility/tests/docs locations |
+
+I would then run focused tests for each surface, the full test suite, type checking, linting, UI build/tests, and any serialization or snapshot checks. Finally, I would inspect actual serialized output—not merely assertions on in-memory objects—and perform a repository-wide search for both field names.
+
+Completion requires more than green tests: there must be exactly one intentional legacy-read implementation, zero new-write paths emitting `taskRevision`, and a documented plan to remove compatibility after the promised release.

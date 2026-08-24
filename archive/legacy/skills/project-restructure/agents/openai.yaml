@@ -1,0 +1,4 @@
+interface:
+  display_name: "Project Restructure"
+  short_description: "Inventory, plan, and execute minimal repo carrier cleanup."
+  default_prompt: "Use $project-restructure to inventory this repo against accepted design and plan the smallest valid cleanup wave."

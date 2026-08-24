@@ -2,7 +2,7 @@
 
 做到这份目录为止，不开始基座实现。哲学基础 / philosophical foundations 指 `theory/philosophy.md` 及其解读，不再叫 Sequence、原则源。
 
-上一版具体在 `archive/v0.5`。完整旧树看那个分支；活树降级文档进 `archive/`。
+上一版具体在 `archive/v0.5`。完整旧树看那个分支。活树 `archive/` 是文档暂存：先整包放进来，再 `git mv` 到目标路径后修改。还在 `archive/` 里的，就是还没迁进活位置的。
 
 ## 目标树
 
@@ -22,11 +22,12 @@
 ├── planning/
 │   ├── roadmap.md
 │   └── plan.md
-├── archive/
+├── archive/                      # v0.5 文档暂存；迁出后再改
 │   ├── README.md
-│   ├── theory/
+│   ├── principles/
 │   ├── design/
-│   └── planning/
+│   ├── skills/
+│   └── …
 ├── skills/
 └── .agents/
     └── skills/
@@ -45,9 +46,14 @@
 - 建立 `planning/roadmap.md` 和本文件
 - 迁入 `theory/philosophy.md`、`theory/philosophy/Pxx.md` 和 `draft/`
 - `README.md` / `AGENTS.md` 指向哲学基础
+- 把 v0.5 文档（含 skills）放进活树 `archive/`
 
 ## 还要做
 
-- 迁入 harness 理论到 `theory/harness/`
-- 按 keep/archive 门迁仍要用的成形文件到 `design/`，其余留在归档分支或进 `archive/`
-- 可移植 skills 进 `skills/`，本项目 skills 进 `.agents/skills/`
+从 `archive/` 移出后再改，不要直接改暂存副本：
+
+- `archive/design/harness/` 等 → `theory/harness/`
+- 仍约束下一版的成形文件 → `design/`；其余留在 `archive/design/`
+- `archive/principles/research/` 等 → `theory/research/` 或继续留在 `archive/`
+- 可移植 skills：`archive/skills/` → `skills/`
+- 本项目 skills → `.agents/skills/`

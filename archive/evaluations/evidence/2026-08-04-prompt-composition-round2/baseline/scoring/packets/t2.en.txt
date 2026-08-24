@@ -1,0 +1,34 @@
+Use only this packet. Do not inspect a repository, load Skills or memory, or discuss the experiment. Return only the finished notice.
+
+Task: Rewrite the draft as a truthful public notice on the clinic website. Caregivers need to understand why the trial is being run, how to request a same-day slot, who decides urgency, what happens to unused slots, what the clinic will measure, and what the trial does not change. Remove unsupported promotional language and the catalog-like shape. Use only the confirmed source.
+
+Confirmed source:
+- Starting August 5, Northside Community Clinic will reserve 12 same-day appointment slots each weekday for urgent pediatric cases.
+- A caregiver may request a same-day slot by calling the clinic. No app or online account is required.
+- A triage nurse decides whether a case is urgent under the clinic's existing triage protocol. Front-desk staff do not make that decision.
+- Reserved slots not used that day are released to online booking at 14:00 for next-day appointments.
+- The change is a six-week trial.
+- During the trial, the clinic will measure pediatric waiting time and abandoned calls.
+- The trial does not add clinicians or increase the clinic's total appointment capacity.
+- In the previous four weeks, 18 caregivers who called for a sick child were told that no same-day appointment was available.
+- Do not claim that the trial guarantees an appointment, reduces emergency-room use, improves outcomes, or will continue after six weeks.
+
+Existing draft:
+
+# Exciting Changes to Pediatric Care
+
+Northside Community Clinic is thrilled to announce an innovative new approach that puts families first. Starting August 5, we will reserve 12 same-day appointment slots each weekday for urgent pediatric cases.
+
+## Key Benefits
+
+- Fast and seamless access
+- A family-centered experience
+- Flexible online options
+
+Caregivers can call the clinic to request a slot. A triage nurse uses the existing triage protocol to decide whether a case is urgent. Front-desk staff do not make this decision.
+
+## Looking Ahead
+
+Unused slots are released online at 14:00 for next-day appointments. This six-week trial will measure pediatric waiting time and abandoned calls. It does not add clinicians or increase total appointment capacity. In the previous four weeks, 18 caregivers calling about a sick child were told no same-day appointment was available.
+
+Together, these changes mark an important step toward a brighter future for children and families.

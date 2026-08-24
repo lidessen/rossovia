@@ -1,0 +1,4 @@
+interface:
+  display_name: "Attention Management"
+  short_description: "Keep agent attention on the governing relation"
+  default_prompt: "Use $attention-management to restore the governing relation for the next agent action."

@@ -1,0 +1,42 @@
+[
+  {
+    "id": "edge-positive",
+    "family": "edge",
+    "prompt": "是否存在 N04 --indexed_by--> N05？只回答 yes 或 no。"
+  },
+  {
+    "id": "edge-direction",
+    "family": "edge",
+    "prompt": "是否存在 N05 --indexed_by--> N04？只回答 yes 或 no。"
+  },
+  {
+    "id": "edge-negative",
+    "family": "edge",
+    "prompt": "是否存在 N04 --supports--> N08？只回答 yes 或 no。"
+  },
+  {
+    "id": "edge-label",
+    "family": "edge",
+    "prompt": "N13 指向 N09 的直接关系名称是什么？"
+  },
+  {
+    "id": "relation-chain",
+    "family": "multihop",
+    "prompt": "从 N04 开始依次沿 indexed_by、enables、returns、supports 四种关系，节点序列是什么？用 > 连接。"
+  },
+  {
+    "id": "fanout",
+    "family": "incident",
+    "prompt": "N14 的所有直接出边目标有哪些？按 ID 升序，用逗号连接。"
+  },
+  {
+    "id": "indegree",
+    "family": "incident",
+    "prompt": "N02 的入度是多少？只回答整数。"
+  },
+  {
+    "id": "dense-distractor",
+    "family": "edge",
+    "prompt": "是否存在 N09 --revises--> N02？只回答 yes 或 no。"
+  }
+]

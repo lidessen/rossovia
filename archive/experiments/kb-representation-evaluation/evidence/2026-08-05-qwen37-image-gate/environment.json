@@ -1,0 +1,19 @@
+{
+  "evidenceId": "2026-08-05-qwen37-image-gate",
+  "model": "opencode-go/qwen3.7-plus",
+  "executor": "opencode run --pure --format json",
+  "opencodeVersion": "1.18.13",
+  "condition": "image",
+  "profilePolicy": "new session per trial; default model variant; image attachment only; no filesystem or tools requested",
+  "order": [
+    "sparse",
+    "medium",
+    "dense",
+    "dense",
+    "medium",
+    "sparse",
+    "medium",
+    "sparse",
+    "dense"
+  ]
+}

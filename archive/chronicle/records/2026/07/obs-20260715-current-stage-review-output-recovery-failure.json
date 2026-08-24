@@ -1,0 +1,104 @@
+{
+  "id": "obs-20260715-current-stage-review-output-recovery-failure",
+  "schema": "observation-record.v1",
+  "kind": "run",
+  "occurredAt": "2026-07-15T13:48:04.854Z",
+  "recordedAt": "2026-07-15T13:55:44Z",
+  "subject": {
+    "type": "work-cell-run",
+    "id": "e63a2355-9af6-4d89-8701-c5c3ed5f5576"
+  },
+  "observations": [
+    {
+      "name": "terminal-status",
+      "value": "failed"
+    },
+    {
+      "name": "reported-error",
+      "value": "No output generated."
+    },
+    {
+      "name": "terminal-tool-called",
+      "value": "submit_review"
+    },
+    {
+      "name": "run-record-reported-total-tokens",
+      "value": 0,
+      "unit": "tokens"
+    },
+    {
+      "name": "trace-reconstructed-input-tokens",
+      "value": 3273963,
+      "unit": "tokens"
+    },
+    {
+      "name": "trace-reconstructed-cached-input-tokens",
+      "value": 3029760,
+      "unit": "tokens"
+    },
+    {
+      "name": "trace-reconstructed-output-tokens",
+      "value": 7469,
+      "unit": "tokens"
+    },
+    {
+      "name": "trace-reconstructed-total-tokens",
+      "value": 3281432,
+      "unit": "tokens"
+    },
+    {
+      "name": "declared-estimated-tokens",
+      "value": 90000,
+      "unit": "tokens"
+    },
+    {
+      "name": "actual-to-estimate-ratio",
+      "value": 36.4604,
+      "unit": "ratio"
+    },
+    {
+      "name": "price-revision-estimated-cost",
+      "value": 0.044763,
+      "unit": "USD"
+    },
+    {
+      "name": "structured-review-retained",
+      "value": false
+    }
+  ],
+  "method": {
+    "kind": "calculation",
+    "name": "Work Cell trace and settlement reconciliation",
+    "version": "v1",
+    "limitations": [
+      "Token totals are the sum of cumulative main-loop and recovery-loop usage emitted by the runtime; they were not independently recounted from provider billing.",
+      "The cost applies the run record's 2026-07-10 DeepSeek price revision to uncached input, cached input, and output; it is an audit estimate rather than an invoice.",
+      "The recovery response text was not retained after output parsing failed, so this record cannot assess the lost review's substantive quality."
+    ]
+  },
+  "provenance": {
+    "sourceRole": "primary",
+    "sources": [
+      {
+        "locator": "work-cell-run://e63a2355-9af6-4d89-8701-c5c3ed5f5576/current-stage-independent-review.cell.run.json",
+        "role": "raw",
+        "sha256": "41a9cc41fdc6ce7bc2871a1357afb95ba9d428a91da7d3374a5b5b0d97525ee2"
+      }
+    ]
+  },
+  "quality": {
+    "status": "reviewed",
+    "limitations": [
+      "The source run record remains local and ignored; its digest and decision-relevant measurements are retained here, but its full trace is not committed."
+    ]
+  },
+  "observer": {
+    "kind": "agent",
+    "id": "codex-primary-session"
+  },
+  "recorder": {
+    "kind": "agent",
+    "id": "codex-primary-session"
+  },
+  "classification": "internal"
+}

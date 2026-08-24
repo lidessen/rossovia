@@ -1,0 +1,155 @@
+{
+  "version": "parent-evidence-admission.result.v1",
+  "status": "mechanically-comparable",
+  "packetSha256": "9ba88eafa2bf9c16e7dcf5208fed6e210e5c233970788c285c3f7e2e6fa5ebf8",
+  "sourcePacketSha256": "9148029ebc2a4bd792b804505482a98c272f9e8b47f169c66ce8d348d50dd919",
+  "sourceChildOutputSha256": "9e89f064adb44d9a31f07942ec0d9f0ec51b1083a8ae946d9dc165703cf01972",
+  "treatmentHypothesis": "Explicit bounded evidence admission may let the parent preserve the exact case relation without granting child acceptance authority.",
+  "directBaseline": {
+    "runId": "74a95ccd-2272-4bdb-a123-5f0d99b0eab3",
+    "cellId": "northstar-topology-direct",
+    "status": "passed",
+    "durationMs": 42770,
+    "configuredDriver": {
+      "adapter": "ai-sdk-v7",
+      "provider": "deepseek",
+      "model": "deepseek-v4-flash",
+      "pricing": {
+        "inputPerMillionUsd": 0.14,
+        "cachedInputPerMillionUsd": 0.0028,
+        "outputPerMillionUsd": 0.28,
+        "source": "https://api-docs.deepseek.com/quick_start/pricing",
+        "revision": "2026-07-31"
+      }
+    },
+    "servingObservation": {
+      "selectedRoutes": [
+        "ai-sdk-v7/deepseek/deepseek-v4-flash"
+      ],
+      "backendFingerprints": [
+        "fp_a18b46594c_prod0820_fp8_kvcache_20260402"
+      ]
+    },
+    "usage": {
+      "inputTokens": 9147,
+      "outputTokens": 5701,
+      "totalTokens": 14848,
+      "cachedInputTokens": 1920
+    },
+    "estimatedCostUsd": 0.00261344,
+    "outputAvailable": true,
+    "outputVerification": {
+      "passed": true,
+      "errors": []
+    },
+    "workspaceDiff": {
+      "added": [],
+      "changed": [],
+      "removed": []
+    }
+  },
+  "frozenChild": {
+    "runId": "aa45aa1b-8e69-4949-9785-dc919ad1bbd1",
+    "cellId": "northstar-topology-nested-child",
+    "status": "passed",
+    "durationMs": 13978,
+    "configuredDriver": {
+      "adapter": "ai-sdk-v7",
+      "provider": "deepseek",
+      "model": "deepseek-v4-flash",
+      "pricing": {
+        "inputPerMillionUsd": 0.14,
+        "cachedInputPerMillionUsd": 0.0028,
+        "outputPerMillionUsd": 0.28,
+        "source": "https://api-docs.deepseek.com/quick_start/pricing",
+        "revision": "2026-07-31"
+      }
+    },
+    "servingObservation": {
+      "selectedRoutes": [
+        "ai-sdk-v7/deepseek/deepseek-v4-flash"
+      ],
+      "backendFingerprints": [
+        "fp_a18b46594c_prod0820_fp8_kvcache_20260402"
+      ]
+    },
+    "usage": {
+      "inputTokens": 5135,
+      "outputTokens": 1754,
+      "totalTokens": 6889,
+      "cachedInputTokens": 2176
+    },
+    "estimatedCostUsd": 0.00091147,
+    "outputAvailable": true,
+    "outputVerification": {
+      "passed": true,
+      "errors": []
+    },
+    "workspaceDiff": {
+      "added": [],
+      "changed": [],
+      "removed": []
+    }
+  },
+  "treatmentParent": {
+    "runId": "3844dc47-c480-40b2-a247-ce340dca3738",
+    "cellId": "northstar-evidence-admission-parent",
+    "status": "passed",
+    "durationMs": 53602,
+    "configuredDriver": {
+      "adapter": "ai-sdk-v7",
+      "provider": "deepseek",
+      "model": "deepseek-v4-flash",
+      "pricing": {
+        "inputPerMillionUsd": 0.14,
+        "cachedInputPerMillionUsd": 0.0028,
+        "outputPerMillionUsd": 0.28,
+        "source": "https://api-docs.deepseek.com/quick_start/pricing",
+        "revision": "2026-07-31"
+      }
+    },
+    "servingObservation": {
+      "selectedRoutes": [
+        "ai-sdk-v7/deepseek/deepseek-v4-flash"
+      ],
+      "backendFingerprints": [
+        "fp_a18b46594c_prod0820_fp8_kvcache_20260402"
+      ]
+    },
+    "usage": {
+      "inputTokens": 13647,
+      "outputTokens": 6810,
+      "totalTokens": 20457,
+      "cachedInputTokens": 6784
+    },
+    "estimatedCostUsd": 0.00288662,
+    "outputAvailable": true,
+    "outputVerification": {
+      "passed": true,
+      "errors": []
+    },
+    "workspaceDiff": {
+      "added": [],
+      "changed": [],
+      "removed": []
+    },
+    "workspaceTree": {
+      "beforeSha256": "981200cdf5e902fd4a53caff043f95c2480a7b0c6e21eb8a0485174696155237",
+      "afterSha256": "981200cdf5e902fd4a53caff043f95c2480a7b0c6e21eb8a0485174696155237",
+      "unchanged": true
+    }
+  },
+  "reconstructedNestedTreatment": {
+    "totalUsage": {
+      "inputTokens": 18782,
+      "outputTokens": 8564,
+      "totalTokens": 27346,
+      "cachedInputTokens": 8960
+    },
+    "totalDurationMs": 67580,
+    "estimatedCostUsd": 0.00379809
+  },
+  "mechanicalErrors": [],
+  "externalSemanticReviewerRun": false,
+  "semanticDisposition": "withheld pending independent source review"
+}

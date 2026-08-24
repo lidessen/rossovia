@@ -1,0 +1,4 @@
+interface:
+  display_name: "Task Shaping"
+  short_description: "Fit complex work to a stable agent envelope"
+  default_prompt: "Use $task-shaping to transform this task into stable, verifiable agent work without losing global constraints."

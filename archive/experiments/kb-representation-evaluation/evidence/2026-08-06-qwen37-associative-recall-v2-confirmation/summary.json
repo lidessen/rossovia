@@ -1,0 +1,72 @@
+{
+  "evidenceId": "2026-08-06-qwen37-associative-recall-v2-confirmation",
+  "status": "question-held-out-confirmation-probe",
+  "fixtureId": "shilu-associative-recall-v2",
+  "caseSet": "confirmation",
+  "repetitions": 2,
+  "aggregate": {
+    "image": {
+      "trials": 8,
+      "settledRoutes": 8,
+      "settledAnswers": 8,
+      "hitAt1": 0.5,
+      "hitAt3": 0.875,
+      "hitAt5": 1,
+      "recallAt1": 0.4375,
+      "recallAt3": 0.6875,
+      "recallAt5": 0.9375,
+      "allRelevantHitAt3": 0.5,
+      "allRelevantHitAt5": 0.875,
+      "meanReciprocalRank": 0.6708333333333333,
+      "answerAccuracy": 1,
+      "citationPrecision": 0.8095238095238095,
+      "citationCoverage": 0.9444444444444444,
+      "groundedSuccessRate": 0.625,
+      "meanOpenedSources": 5,
+      "counts": {
+        "correctAnswerCount": 16,
+        "totalClaimCount": 16,
+        "correctCitationCount": 17,
+        "submittedCitationCount": 21,
+        "coveredEvidenceGroupCount": 17,
+        "totalEvidenceGroupCount": 18
+      },
+      "totalDurationMs": 298241,
+      "totalObservedCost": 0.2190743,
+      "routeFailures": 0,
+      "answerFailures": 0
+    },
+    "search": {
+      "trials": 8,
+      "settledRoutes": 8,
+      "settledAnswers": 8,
+      "hitAt1": 0.875,
+      "hitAt3": 1,
+      "hitAt5": 1,
+      "recallAt1": 0.6875,
+      "recallAt3": 0.875,
+      "recallAt5": 1,
+      "allRelevantHitAt3": 0.75,
+      "allRelevantHitAt5": 1,
+      "meanReciprocalRank": 0.9166666666666666,
+      "answerAccuracy": 1,
+      "citationPrecision": 1,
+      "citationCoverage": 0.8888888888888888,
+      "groundedSuccessRate": 0.75,
+      "meanOpenedSources": 4.75,
+      "counts": {
+        "correctAnswerCount": 16,
+        "totalClaimCount": 16,
+        "correctCitationCount": 16,
+        "submittedCitationCount": 16,
+        "coveredEvidenceGroupCount": 16,
+        "totalEvidenceGroupCount": 18
+      },
+      "totalDurationMs": 245471,
+      "totalObservedCost": 0.21017339999999998,
+      "routeFailures": 0,
+      "answerFailures": 0
+    }
+  },
+  "interpretationGuard": "Retrieval relevance is independent from answer support. Final answers are evaluated only after opening frozen passages; routing artifacts are never citations."
+}

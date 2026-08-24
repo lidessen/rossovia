@@ -1,0 +1,73 @@
+{
+  "id": "document-expression-efficiency",
+  "fixture": {
+    "root": ".",
+    "overlays": [
+      {
+        "source": "../../../../principles/SEQUENCE.md",
+        "destination": "principles/SEQUENCE.md"
+      },
+      {
+        "source": "../../../../principles/interpretations",
+        "destination": "principles/interpretations"
+      }
+    ]
+  },
+  "outputDir": "../../../../packages/work-cell/.work-cell/experiments",
+  "task": {
+    "id": "write-rossovia-opening",
+    "intent": "Rewrite draft.md as a publication-ready Chinese README opening using only source.md. Help a new reader understand what Rossovia is, why it exists, and how they can approach it.",
+    "workspace": {
+      "readPaths": ["source.md", "principles/SEQUENCE.md", "principles/interpretations"],
+      "writePaths": ["draft.md"],
+      "allowedCommands": []
+    },
+    "genome": {
+      "sequencePath": "principles/SEQUENCE.md",
+      "interpretationsDir": "principles/interpretations",
+      "inheritedLineage": {
+        "primary": "P16",
+        "supporting": ["P01", "P05", "P07"]
+      }
+    },
+    "dna": {
+      "baseInstructions": "Act as the maintainer writing the opening of a real open-source project README. Preserve the supplied facts and their qualifications. Write the finished opening to draft.md without discussing your process.",
+      "capabilities": ["read", "write"]
+    },
+    "capabilitiesRequired": ["read", "write"],
+    "acceptance": [
+      "Read source.md before writing.",
+      "Replace draft.md with a self-contained Chinese README opening.",
+      "Preserve source qualifications and introduce no unsupported facts."
+    ],
+    "artifacts": [
+      {
+        "path": "draft.md",
+        "instructions": "The finished Chinese README opening."
+      }
+    ],
+    "budget": {
+      "maxSteps": 6,
+      "estimatedTokens": 12000,
+      "estimatedTokensTolerance": 1,
+      "maxDurationMs": 180000,
+      "maxCommandOutputBytes": 4000
+    }
+  },
+  "variants": [
+    {
+      "id": "neutral"
+    },
+    {
+      "id": "efficiency-treatment",
+      "treatment": {
+        "id": "efficient-assistant-style",
+        "instructions": "Make the response efficient: lead with the outcome, keep it concise and scannable, organize it with clear headings or bullets where useful, and remove secondary detail."
+      }
+    }
+  ],
+  "repetitions": 2,
+  "judge": {
+    "rubric": "Compare the README openings as real published prose for a skeptical open-source developer, not as chat answers. Preserve factual fidelity first. Then prefer a coherent relation between concrete project facts, purpose, boundaries, and reader entry over generic professional phrasing, catalog prose, assistant-style formatting, slogans, or compressed fragments. Do not reward length, headings, bullets, or polish by themselves. Return tie if the difference is only taste."
+  }
+}

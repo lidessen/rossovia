@@ -1,0 +1,110 @@
+{
+  "version": "delegation-topology-probe.blind-review.v1",
+  "rubricSha256": "ec09f74145648e8f61f1d0d7cce646c3489b7fad2fde5ff92a7019e81eda6a7e",
+  "candidates": {
+    "A": {
+      "verdict": "incompatible",
+      "findings": [
+        {
+          "artifact": "src/adapters/northstar-job-event.ts",
+          "issue": "kind is derived from retryability instead of declared outcome, forcing non-retryable and cancelled events to kind 'succeeded'",
+          "evidence": [
+            "src/adapters/northstar-job-event.ts: `kind: retryable ? \"failed\" : \"succeeded\"`",
+            "test/northstar-job-event.test.ts: test \"preserves non-retryable failure\" expects { kind: 'failed', retry: 'none' }",
+            "test/northstar-job-event.test.ts: test \"preserves cancellation\" expects { kind: 'cancelled', retry: 'none' }"
+          ],
+          "smallestCorrection": "In src/adapters/northstar-job-event.ts, map kind from outcome and gate retry on outcome === 'failed' && retryable: `const outcome = event.result.outcome; const retryable = event.result.retryable === true; return { jobId: event.job_id, kind: outcome, retry: outcome === 'failed' && retryable ? 'eligible' : 'none', occurredAt: event.occurred_at };` (no file edits made)."
+        }
+      ],
+      "preservedContracts": [
+        "src/domain/job-transition.ts (JobTransition type)",
+        "TASK.md acceptance criteria",
+        "protocol text and public domain types (no changes)",
+        "test/northstar-job-event.test.ts expectations"
+      ],
+      "mechanicalEvidence": [
+        "Bundled adapter source, domain type, tests, package.json, tsconfig.json, and TASK.md read and checked",
+        "Adapter fails 'preserves non-retryable failure' and 'preserves cancellation' tests because kind is derived from retryable, not outcome",
+        "Smallest correction is confined to the adapter and keeps type-safety (outcome is assignable to JobTransition['kind']); no file edited",
+        "docs/northstar-job-events-v2.md and conformance/northstar-job-events-v2/case-07.json are absent from workspace (read attempts returned ENOENT)"
+      ],
+      "semanticReviewNeeded": [
+        "Protocol document and conformance/northstar-job-events-v2/case-07.json are not present in the workspace, so the exact protocol wording and case-07 declared input/expected pair could not be mechanically verified",
+        "The child report's case-07 conclusion is plausible and aligns with the corrected adapter but remains dependent on the missing sources"
+      ],
+      "withheldAuthority": "Final pass/fail acceptance of the repair, protocol truth, and conformance-case validity is outside the reporting role and is not granted here.",
+      "uncertainties": [
+        "docs/northstar-job-events-v2.md not present in the workspace; protocol text could not be confirmed",
+        "conformance/northstar-job-events-v2/case-07.json not present in the workspace; its content could not be confirmed"
+      ]
+    },
+    "B": {
+      "verdict": "incompatible",
+      "findings": [
+        {
+          "artifact": "src/adapters/northstar-job-event.ts",
+          "issue": "Adapter derives `kind` from `retryable` instead of the event's declared outcome, contradicting the protocol and failing two tests.",
+          "evidence": [
+            "protocol docs/northstar-job-events-v2.md: \"Its `kind` is the event's declared outcome.\"",
+            "adapter code: `kind: retryable ? \"failed\" : \"succeeded\"`",
+            "test \"preserves non-retryable failure\" expects failed+retryable:false → kind:\"failed\" but adapter yields \"succeeded\"",
+            "test \"preserves cancellation\" expects cancelled → kind:\"cancelled\" but adapter yields \"succeeded\"",
+            "consequence: `bun test` fails 2 of 4 cases"
+          ],
+          "smallestCorrection": "In the adapter, set `const kind = event.result.outcome;` and key kind off the declared outcome instead of `retryable`."
+        },
+        {
+          "artifact": "src/domain/job-transition.ts",
+          "issue": "The `\"cancelled\"` member of the public JobTransition union is unreachable from the adapter.",
+          "evidence": [
+            "domain type declares `kind: \"succeeded\" | \"failed\" | \"cancelled\"`",
+            "adapter derives kind only from a boolean `retryable`, so kind can only ever be \"succeeded\" or \"failed\""
+          ],
+          "smallestCorrection": "Same adapter fix as D1 (derive kind from `event.result.outcome`) makes \"cancelled\" reachable; no change to the public domain type."
+        },
+        {
+          "artifact": "conformance/northstar-job-events-v2/case-07.json",
+          "issue": "`expected.kind` is \"succeeded\" for an input whose declared outcome is \"failed\", invalid under the protocol and inconsistent with the repaired adapter and tests.",
+          "evidence": [
+            "case-07 input `outcome: \"failed\", retryable: false`",
+            "case-07 `expected.kind: \"succeeded\"`",
+            "protocol requires kind = declared outcome, so a failed outcome must map to kind:\"failed\"",
+            "test \"preserves non-retryable failure\" expects kind:\"failed\", retry:\"none\" for the same input shape"
+          ],
+          "smallestCorrection": "Change case-07 `expected.kind` from \"succeeded\" to \"failed\" (retry stays \"none\")."
+        },
+        {
+          "artifact": "src/adapters/northstar-job-event.ts",
+          "issue": "Latent gap: `retry` is computed as `retryable ? \"eligible\" : \"none\"` unconditionally, so a non-failed event carrying retryable:true would be marked eligible, contrary to the protocol.",
+          "evidence": [
+            "adapter code: `retry: retryable ? \"eligible\" : \"none\"`",
+            "protocol docs/northstar-job-events-v2.md: \"only a failed result with `retryable: true` is `eligible`; every other transition has retry value `none`.\"",
+            "not covered by any test or conformance case — semantic, not mechanically tested"
+          ],
+          "smallestCorrection": "Gate retry eligibility on failed kind: `const retry = kind === \"failed\" && event.result.retryable === true ? \"eligible\" : \"none\";`"
+        }
+      ],
+      "preservedContracts": [
+        "docs/northstar-job-events-v2.md (protocol text unchanged)",
+        "src/domain/job-transition.ts (public domain type unchanged)",
+        "test/northstar-job-event.test.ts (tests unchanged)",
+        "package.json / tsconfig.json / TASK.md (unrelated files unchanged)"
+      ],
+      "mechanicalEvidence": [
+        "Current adapter produces kind:\"succeeded\" for cancelled and for failed/retryable:false inputs.",
+        "Therefore tests \"preserves non-retryable failure\" and \"preserves cancellation\" fail; `bun test` does not currently pass.",
+        "kind:\"cancelled\" is unreachable from the current adapter, under-serving the JobTransition union.",
+        "case-07 expected.kind (\"succeeded\") is inconsistent with the protocol declared-outcome rule and with the test \"preserves non-retryable failure\"."
+      ],
+      "semanticReviewNeeded": [
+        "Confirm case-07 is intended as a non-retryable-failure example so the reconciled expected.kind=\"failed\"/retry=\"none\" reflects intent.",
+        "Confirm the stricter `kind === \"failed\"` retry gate is the desired contract for the D4 edge (a non-failed event carrying retryable:true), which is not covered by tests or conformance."
+      ],
+      "withheldAuthority": "Read-only Work Cell; no files were edited and no durable acceptance authority is held. Acceptance (test pass, conformance validity, ownership sign-off) remains with the owning role in the separate settlement phase.",
+      "uncertainties": [
+        "No test or conformance case covers the D4 edge (non-failed event with retryable:true), so its required behavior is inferred from protocol text rather than verified mechanically.",
+        "case-07's intended example category is inferred as non-retryable failure from the minimal reading; final semantic confirmation is pending."
+      ]
+    }
+  }
+}

@@ -1,0 +1,481 @@
+{
+  "version": "human-agent-visualization.skill-evidence-bundle.v2",
+  "subject": {
+    "id": "skill-engineering",
+    "operation": "rewrite",
+    "revision": "sha256:86219a8d9906dc2c7547e661e24d0fd5309a90584c99d63c914d6463702ff505",
+    "sourceSetRevision": "sha256:fa2116d55267ddc5607c70b7cca006c0b111abef8fab5f3d02679fbd0ae07192"
+  },
+  "builder": {
+    "id": "skill-lens-fixture-builder",
+    "revision": "prototype-r3"
+  },
+  "generatedAt": "2026-08-05T18:00:00.000Z",
+  "sourceIdentities": [
+    {
+      "sourceRef": "design/decisions/003-skill-engineering-first-slice.md",
+      "revision": "sha256:257f8a08f199520fe1692426f2cb3977b13a609e9b4ffedce8529487b412ed93"
+    },
+    {
+      "sourceRef": "skills/skill-engineering/SKILL.md",
+      "revision": "sha256:86219a8d9906dc2c7547e661e24d0fd5309a90584c99d63c914d6463702ff505"
+    },
+    {
+      "sourceRef": "skills/skill-engineering/commands/rewrite.md",
+      "revision": "sha256:681d748d0bbe8f0a28652287a4be0ac262f2c487d5d953bb813625404de97035"
+    },
+    {
+      "sourceRef": "skills/skill-engineering/references/expression-team.md",
+      "revision": "sha256:c03d7600aaa0ba4329c1ff41bed987d12d6badfc34c391048db8a638a1b00c03"
+    },
+    {
+      "sourceRef": "skills/skill-engineering/references/expression-layers.md",
+      "revision": "sha256:e59762b1bb579438dc197c7d2e628d24cd3577b8243b56b871efc331565a81f4"
+    },
+    {
+      "sourceRef": "skills/skill-engineering/references/evaluation.md",
+      "revision": "sha256:d54926d8c7af17552a7d8d531af055ee96558b597661b2afc0bcef4ced057ea5"
+    },
+    {
+      "sourceRef": "principles/SEQUENCE.md",
+      "revision": "sha256:e600edcde4b660760837636ab9bbd594f55a0c646ef92bd957266fd07b5e5735"
+    }
+  ],
+  "artifacts": {
+    "request": {
+      "value": {
+        "authorship": "fixture-authored",
+        "sourceRef": "fixture:principal-request/skill-engineering-rewrite",
+        "revision": "sha256:91676a885f2aa5b45293987a75367beea638d88343dffcf7c95a91cc759beeb9",
+        "content": "请 rewrite 现有 skill-engineering：不要在原文上润色；从完整继承表面重构，并用同一 action、boundary 与 context probes 比较旧新行为。",
+        "operation": "rewrite",
+        "question": "为什么 skill-engineering 与这个 rewrite 请求相关，它会走哪条证据路径，并在哪里停？",
+        "text": "请 rewrite 现有 skill-engineering：不要在原文上润色；从完整继承表面重构，并用同一 action、boundary 与 context probes 比较旧新行为。"
+      },
+      "digest": "sha256:af636b08dc453933f6334ef805d93e2bd466c035a439dd2193a64e619b9ca44c"
+    },
+    "generalOwnerGateSource": {
+      "value": {
+        "authorship": "retained-source",
+        "sourceRef": "design/decisions/003-skill-engineering-first-slice.md",
+        "revision": "sha256:257f8a08f199520fe1692426f2cb3977b13a609e9b4ffedce8529487b412ed93",
+        "content": "# 003 — Skill Engineering as the First Regeneration Slice\n\n**Status:** adopted\n\n## Context\n\nThe collection needs a first downstream expression that improves agent action\nitself: harnesses, skills, and other agent-facing instructions. Generic skill\nformat guidance is useful source material, but it cannot decide whether a\nproposed behavior belongs in a reusable skill, which principles govern it, or\nwhether the resulting expression actually changes behavior.\n\n## Decision\n\nCreate `skill-engineering` as the first regenerated skill. It owns one gate:\n\n> Does this observed agent-action gap require a reusable, testable skill\n> expression, and what is the smallest expression that closes it?\n\nIts stable expression team is Primary P16 with P09, P08, and P15 supporting:\n\n- P16 asks whether the form enables its actual agent to act.\n- P09 separates always-needed guidance from activated method and on-demand\n  detail.\n- P08 requires a behavior claim to expose a test that could disconfirm it.\n- P15 prevents a new skill, rule, file, or test layer that does not close the\n  present gap.\n\nFor every target skill, `skill-engineering` forms a separate, temporary\n**expression team**: exactly one target Primary P-ID and up to three target\nsupports, selected from the Sequence and justified by the target's live\ncontradiction. This team is downstream design work, not a principle-review\ncommittee and never an authority over the Sequence. `principle-cultivation`\nremains the sole route for proposing or changing principles.\n\nThe skill must test a target's trigger, action path, boundary, and context\nload before treating it as a successful expression. If the gap is local,\none-time, tool-specific, or already covered by another skill, it writes a\nsmaller form or declines to create a skill.\n\n## Consequences\n\n- Harness and agent-engineering skills can now be regenerated from a shared\n  method rather than copied from historical prompts.\n- Instruction testing becomes a command/reference inside this skill first;\n  it does not yet earn a separate `instruction-experiment` skill boundary.\n- The broader target architecture remains proposed. This decision authorizes\n  only the first `skill-engineering` slice.\n\n## Human approval\n\nApproved in the instruction to first form a Sequence-based skill that writes\nand improves other skills on 2026-07-09.\n",
+        "excerpt": "## Context\n\nThe collection needs a first downstream expression that improves agent action\nitself: harnesses, skills, and other agent-facing instructions. Generic skill\nformat guidance is useful source material, but it cannot decide whether a\nproposed behavior belongs in a reusable skill, which principles govern it, or\nwhether the resulting expression actually changes behavior.\n\n## Decision\n\nCreate `skill-engineering` as the first regenerated skill. It owns one gate:\n\n> Does this observed agent-action gap require a reusable, testable skill\n> expression, and what is the smallest expression that closes it?\nIts stable expression team is Primary P16 with P09, P08, and P15 supporting:\n\n- P16 asks whether the form enables its actual agent to act.\n- P09 separates always-needed guidance from activated method and on-demand\n  detail.\n- P08 requires a behavior claim to expose a test that could disconfirm it.\n- P15 prevents a new skill, rule, file, or test layer that does not close the\n  present gap.\n\nFor every target skill, `skill-engineering` forms a separate, temporary\n**expression team**: exactly one target Primary P-ID and up to three target\nsupports, selected from the Sequence and justified by the target's live\ncontradiction. This team is downstream design work, not a principle-review\ncommittee and never an authority over the Sequence. `principle-cultivation`\nremains the sole route for proposing or changing principles.\n\nThe skill must test a target's trigger, action path, boundary, and context\nload before treating it as a successful expression. If the gap is local,\none-time, tool-specific, or already covered by another skill, it writes a\nsmaller form or declines to create a skill.\n## Human approval\n\nApproved in the instruction to first form a Sequence-based skill that writes\nand improves other skills on 2026-07-09."
+      },
+      "digest": "sha256:4d7ff33c1444f716c49825fd1a9b17cb2eb1ea01a7efb250711c0b6c906d1ce5"
+    },
+    "actionGapHypothesis": {
+      "value": {
+        "authorship": "fixture-authored",
+        "sourceRef": "fixture:hypothesis/skill-engineering-action-gap",
+        "revision": "sha256:029e727bcbb4e596576e6a66007e0998af2c61142494555944f937338c15b4fb",
+        "content": "Hypothesis：这个具体请求可能来自重复、已定位到 Skill 表达层的失败；当前 fixture 没有保留这些 failure records。",
+        "excerpt": "Hypothesis：这个具体请求可能来自重复、已定位到 Skill 表达层的失败；当前 fixture 没有保留这些 failure records。"
+      },
+      "digest": "sha256:6a7f8956770e302885139bde0511502a0be119510277fdb3201e60b4e74754d3"
+    },
+    "minimumFormHypothesis": {
+      "value": {
+        "authorship": "fixture-authored",
+        "sourceRef": "fixture:hypothesis/skill-engineering-minimum-form",
+        "revision": "sha256:1562c2ead5f87a691260192f4f09b2c7d42fcc2cd9d11d7f1c1714ec26fa9dba",
+        "content": "Hypothesis：rewrite-existing-skill 可能是最小形式；当前 fixture 没有保留这个具体请求的 minimum-form decision。",
+        "excerpt": "Hypothesis：rewrite-existing-skill 可能是最小形式；当前 fixture 没有保留这个具体请求的 minimum-form decision。"
+      },
+      "digest": "sha256:c49417f388d9773f7b7f01f028c3e580124a86e16aa8ace53eca40ac6bfbf233"
+    },
+    "skillSource": {
+      "value": {
+        "authorship": "retained-source",
+        "sourceRef": "skills/skill-engineering/SKILL.md",
+        "revision": "sha256:86219a8d9906dc2c7547e661e24d0fd5309a90584c99d63c914d6463702ff505",
+        "content": "---\nname: skill-engineering\ndescription: >-\n  Design, rewrite, review, and test agent skills that improve a repeated agent\n  action or judgment. Use when creating a skill, rewriting a SKILL.md, improving\n  a known skill trigger or action layer, reducing skill-context bloat, or\n  checking whether a skill instruction actually changes behavior. Triggers\n  include \"create a skill\", \"rewrite this skill\", \"review this SKILL.md\",\n  \"improve this project skill\", \"skill design\", and \"test this skill prompt\".\n  If an agent-work failure has not yet been localized to a skill, let an\n  agent-workflow diagnostic method identify the owning surface first.\n---\n\n# Skill Engineering\n\n## Principle expression\n\n**Primary:** P16\n**Supporting:** P09, P08, P15\n\n## Scope\n\nEngineer an agent-facing expression only when an observed action gap recurs and\na reusable skill is the smallest form that can close it. The objective is not a\nwell-formatted prompt; it is an agent that can make the intended judgment and\ntake the intended action under its real context constraints.\n\nDo not create a skill for a one-time request, a vendor command reference, an\nimplementation detail, or a behavior already owned by a more specific skill.\nUse a project document, command, reference, or local adapter when that is the\ntruer form. Do not create, interpret, or revise Sequence entries here; route a\npossible new principle to principle-cultivation.\n\nThis package is independently usable. It carries a read-only Sequence snapshot\nin `references/sequence.md` and source-bound interpretations under\n`references/sequence-interpretations/`. The package is a portable lineage\nbaseline, not a second semantic source.\n\n## Dispatch\n\n- With `create`, read and follow commands/create.md.\n- With `rewrite`, read and follow commands/rewrite.md.\n- With `review`, read and follow commands/review.md.\n- With `test`, read and follow commands/test.md.\n- With `refresh-sequence`, read and follow commands/refresh-sequence.md.\n- With `sync-sequence-snapshot`, read and follow commands/sync-sequence-snapshot.md.\n- With no argument, diagnose the stated agent-action gap, choose the smallest\n  truthful form, and then use the matching path above.\n\n## Principle source resolver\n\nResolve the target's lineage before selecting an expression team.\n\n1. If the host project contains principles/SEQUENCE.md and its corresponding\n   interpretations directory, treat that declared local source as authoritative\n   for the current task.\n2. Otherwise use this package's `references/sequence.md` and only the selected\n   files under `references/sequence-interpretations/`. This fallback must be\n   sufficient for offline use.\n3. If freshness materially affects the decision, use refresh-sequence to obtain\n   a temporary, verified remote comparison. Never overwrite the packaged\n   snapshot from a task run. If refresh fails, continue with the baseline and\n   report its version rather than inventing a current result.\n\nWhen host and packaged lines differ, use the host source for its project and\nreport the lineage difference. Do not merge, edit, or silently reconcile them.\n\n## Core method\n\n1. **Ground the action gap.** State who must act, the concrete action or\n   judgment that currently fails, the source evidence, and the observation that\n   would show improvement. Do not begin from a skill name or a preferred file\n   layout.\n2. **Form the target expression team.** Resolve the Sequence through the\n   source resolver, then read only the interpretations for nominated P-IDs.\n   Select exactly one Primary and at most three Supporting P-IDs for the target\n   expression only after the concrete action gap and its governing relation are\n   formed. Record why each changes the core method and why an existing skill\n   cannot own the same gate. Remove a P-ID whose contribution does not survive\n   into the method. Use references/expression-team.md. If the host has a\n   human-nominated alternate candidate, keep it outside this lineage and add it\n   only as a separate, temporary trial with an explicit baseline, candidate\n   delta, and disconfirming observation.\n3. **Choose the minimum form.** Prefer an existing skill, a command, a\n   reference, or a project-local adapter when it already enables the action.\n   Create a new skill only when it has a distinct repeated trigger, judgment,\n   and durable artifact or decision gate.\n4. **Make the expression actionable.** Put stable trigger and scope signals in\n   frontmatter; put the active judgment and short work loop in SKILL.md; put\n   volatile detail, variants, and long protocols behind direct references.\n   Use references/expression-layers.md for register, doctrine-file shape, and\n   P16 probes. Domain skills own organizational or methodological doctrine;\n   this skill owns how that doctrine is expressed. Compose the prompt around\n   the actor's object, governing relations, decision, and evidence path. A role\n   name, qualifier, repeated prohibition, or method step earns its place only\n   when it changes what the Agent notices, preserves, decides, or verifies; do\n   not mistake professional-sounding predicates for an activation method.\n5. **Test behavior, not prose.** Define a task that would reveal the intended\n   behavior, a boundary task that should not trigger or should route elsewhere,\n   and the evidence each outcome must provide. When claiming improvement, use\n   a comparable baseline or label attribution unproven. When the claim concerns\n   prompt expression itself, isolate the proposed carrier through predicate,\n   composition, or order ablation; use matched natural-language conditions for\n   every language covered by the claim. Use references/evaluation.md. Revise\n   from observed failure rather than from aesthetic preference.\n6. **Commit the smallest valid expression.** Preserve source links and record\n   remaining uncertainty. In source-bearing research, interpretation, proposal,\n   or review artifacts, keep descriptive inline links on the claims they support;\n   a detached bibliography alone is insufficient. A passing format check proves\n   only structure; do not claim behavior improvement without behavior evidence.\n\n## Operating boundaries\n\n- This skill's P16/P09/P08/P15 team governs the engineering process. Every\n  target skill forms its own selected expression team; do not copy this team's\n  P-IDs into the target by default.\n- An expression team is not a principle-review committee. It has no vote and\n  no authority over the Sequence.\n- A nominated alternate candidate is not a P-ID expression member. Never place\n  it in Primary or Supporting, let it lead the target, or package it into a\n  standalone skill snapshot. At most one may participate in a host-local trial;\n  route the result back to principle cultivation.\n- Do not turn a successful local prompt into a general rule without a second\n  context or a failure boundary.\n- When a project-wide agent-work failure has not yet been localized to a skill,\n  let an agent-workflow diagnostic owner identify the surface first when one is\n  available. Once evidence selects skill trigger, expression, context layering,\n  or behavior evaluation, this skill owns that work; do not keep both methods as\n  parallel coordinators.\n- Keep the review surface small enough for a human to inspect: target action,\n  selected P-IDs, trigger/boundary, test evidence, and the changed files.\n\n## Completion standard\n\nTreat a skill change as ready only when it has a valid trigger description, a\nselected expression team, an explicit non-scope, a layered context shape, and\nevidence from an appropriate scenario. If one of these is absent, leave the\nskill as a proposal or report the gap instead of asserting that the agent will\nperform better.\n\nWhen a nominated alternate participated, readiness also requires a separately\nlabeled trial result. A successful skill does not by itself prove the candidate\ncaused the success; report `overlap` or `inconclusive` unless the baseline\ncomparison isolates its decision delta.\n",
+        "excerpt": "## Scope\n\nEngineer an agent-facing expression only when an observed action gap recurs and\na reusable skill is the smallest form that can close it. The objective is not a\nwell-formatted prompt; it is an agent that can make the intended judgment and\ntake the intended action under its real context constraints.\n\nDo not create a skill for a one-time request, a vendor command reference, an\nimplementation detail, or a behavior already owned by a more specific skill.\nUse a project document, command, reference, or local adapter when that is the\ntruer form. Do not create, interpret, or revise Sequence entries here; route a\npossible new principle to principle-cultivation.\n## Dispatch\n\n- With `create`, read and follow commands/create.md.\n- With `rewrite`, read and follow commands/rewrite.md.\n- With `review`, read and follow commands/review.md.\n- With `test`, read and follow commands/test.md.\n- With `refresh-sequence`, read and follow commands/refresh-sequence.md.\n- With `sync-sequence-snapshot`, read and follow commands/sync-sequence-snapshot.md.\n- With no argument, diagnose the stated agent-action gap, choose the smallest\n  truthful form, and then use the matching path above.\n## Core method\n\n1. **Ground the action gap.** State who must act, the concrete action or\n   judgment that currently fails, the source evidence, and the observation that\n   would show improvement. Do not begin from a skill name or a preferred file\n   layout.\n2. **Form the target expression team.** Resolve the Sequence through the\n   source resolver, then read only the interpretations for nominated P-IDs.\n   Select exactly one Primary and at most three Supporting P-IDs for the target\n   expression only after the concrete action gap and its governing relation are\n   formed. Record why each changes the core method and why an existing skill\n   cannot own the same gate. Remove a P-ID whose contribution does not survive\n   into the method. Use references/expression-team.md. If the host has a\n   human-nominated alternate candidate, keep it outside this lineage and add it\n   only as a separate, temporary trial with an explicit baseline, candidate\n   delta, and disconfirming observation.\n3. **Choose the minimum form.** Prefer an existing skill, a command, a\n   reference, or a project-local adapter when it already enables the action.\n   Create a new skill only when it has a distinct repeated trigger, judgment,\n   and durable artifact or decision gate.\n4. **Make the expression actionable.** Put stable trigger and scope signals in\n   frontmatter; put the active judgment and short work loop in SKILL.md; put\n   volatile detail, variants, and long protocols behind direct references.\n   Use references/expression-layers.md for register, doctrine-file shape, and\n   P16 probes. Domain skills own organizational or methodological doctrine;\n   this skill owns how that doctrine is expressed. Compose the prompt around\n   the actor's object, governing relations, decision, and evidence path. A role\n   name, qualifier, repeated prohibition, or method step earns its place only\n   when it changes what the Agent notices, preserves, decides, or verifies; do\n   not mistake professional-sounding predicates for an activation method.\n5. **Test behavior, not prose.** Define a task that would reveal the intended\n   behavior, a boundary task that should not trigger or should route elsewhere,\n   and the evidence each outcome must provide. When claiming improvement, use\n   a comparable baseline or label attribution unproven. When the claim concerns\n   prompt expression itself, isolate the proposed carrier through predicate,\n   composition, or order ablation; use matched natural-language conditions for\n   every language covered by the claim. Use references/evaluation.md. Revise\n   from observed failure rather than from aesthetic preference.\n6. **Commit the smallest valid expression.** Preserve source links and record\n   remaining uncertainty. In source-bearing research, interpretation, proposal,\n   or review artifacts, keep descriptive inline links on the claims they support;\n   a detached bibliography alone is insufficient. A passing format check proves\n   only structure; do not claim behavior improvement without behavior evidence.\n## Operating boundaries\n\n- This skill's P16/P09/P08/P15 team governs the engineering process. Every\n  target skill forms its own selected expression team; do not copy this team's\n  P-IDs into the target by default.\n- An expression team is not a principle-review committee. It has no vote and\n  no authority over the Sequence.\n- A nominated alternate candidate is not a P-ID expression member. Never place\n  it in Primary or Supporting, let it lead the target, or package it into a\n  standalone skill snapshot. At most one may participate in a host-local trial;\n  route the result back to principle cultivation.\n- Do not turn a successful local prompt into a general rule without a second\n  context or a failure boundary.\n- When a project-wide agent-work failure has not yet been localized to a skill,\n  let an agent-workflow diagnostic owner identify the surface first when one is\n  available. Once evidence selects skill trigger, expression, context layering,\n  or behavior evaluation, this skill owns that work; do not keep both methods as\n  parallel coordinators.\n- Keep the review surface small enough for a human to inspect: target action,\n  selected P-IDs, trigger/boundary, test evidence, and the changed files.\n\n## Completion standard\n\nTreat a skill change as ready only when it has a valid trigger description, a\nselected expression team, an explicit non-scope, a layered context shape, and\nevidence from an appropriate scenario. If one of these is absent, leave the\nskill as a proposal or report the gap instead of asserting that the agent will\nperform better.",
+        "sourceSetRevision": "sha256:fa2116d55267ddc5607c70b7cca006c0b111abef8fab5f3d02679fbd0ae07192",
+        "declaredOperations": [
+          "create",
+          "rewrite",
+          "review",
+          "test",
+          "refresh-sequence",
+          "sync-sequence-snapshot"
+        ],
+        "scopeExcerpt": "## Scope\n\nEngineer an agent-facing expression only when an observed action gap recurs and\na reusable skill is the smallest form that can close it. The objective is not a\nwell-formatted prompt; it is an agent that can make the intended judgment and\ntake the intended action under its real context constraints.\n\nDo not create a skill for a one-time request, a vendor command reference, an\nimplementation detail, or a behavior already owned by a more specific skill.\nUse a project document, command, reference, or local adapter when that is the\ntruer form. Do not create, interpret, or revise Sequence entries here; route a\npossible new principle to principle-cultivation.",
+        "boundaryExcerpt": "Do not create a skill for a one-time request, a vendor command reference, an\nimplementation detail, or a behavior already owned by a more specific skill.\nUse a project document, command, reference, or local adapter when that is the\ntruer form. Do not create, interpret, or revise Sequence entries here; route a\npossible new principle to principle-cultivation.\n5. **Test behavior, not prose.** Define a task that would reveal the intended\n   behavior, a boundary task that should not trigger or should route elsewhere,\n   and the evidence each outcome must provide. When claiming improvement, use\n   a comparable baseline or label attribution unproven. When the claim concerns\n   prompt expression itself, isolate the proposed carrier through predicate,\n   composition, or order ablation; use matched natural-language conditions for\n   every language covered by the claim. Use references/evaluation.md. Revise\n   from observed failure rather than from aesthetic preference.\n6. **Commit the smallest valid expression.** Preserve source links and record\n   remaining uncertainty. In source-bearing research, interpretation, proposal,\n   or review artifacts, keep descriptive inline links on the claims they support;\n   a detached bibliography alone is insufficient. A passing format check proves\n   only structure; do not claim behavior improvement without behavior evidence."
+      },
+      "digest": "sha256:4e3cce0b443c892e1cc91891e41ae81b43fc849479b8da73de497eb75d3f26fe"
+    },
+    "rewriteCommand": {
+      "value": {
+        "authorship": "retained-source",
+        "sourceRef": "skills/skill-engineering/commands/rewrite.md",
+        "revision": "sha256:681d748d0bbe8f0a28652287a4be0ac262f2c487d5d953bb813625404de97035",
+        "content": "# Rewrite an Existing Skill\n\nRegenerate an inherited skill through concrete, abstraction, and concrete; do\nnot modernize its wording in place.\n\n1. Read the complete existing skill, including every command, reference, script,\n   and artifact that its body dispatches to. Record observed triggers, actual\n   decisions, durable artifacts, source evidence, and recurring failures.\n2. Separate that concrete inventory from contingent form: its name, phase\n   count, directory layout, historical cross-skill story, and inherited rules.\n   Keep source links; do not call inconvenient evidence noise.\n3. Form a new target expression team using references/expression-team.md. The\n   former Primary and Supporting P-IDs are provenance, not a verdict. If the\n   abstract function is already owned elsewhere, propose merge, retirement, or\n   demotion instead of rewriting a duplicate.\n4. Recompose the retained function as a new skill. Preserve only material that\n   enables its distinct action; move volatile or conditional material behind a\n   direct reference.\n5. Use references/evaluation.md to compare the old and new forms on the same\n   action and boundary probes. Report regression risk and migration work before\n   retiring the inherited form. Recompose expression through\n   references/expression-layers.md; do not polish mixed register in place.\n\nDo not silently change the Sequence or turn a project-local mechanism into a\ngeneral rule while rewriting.\n",
+        "excerpt": "# Rewrite an Existing Skill\n\nRegenerate an inherited skill through concrete, abstraction, and concrete; do\nnot modernize its wording in place.\n\n1. Read the complete existing skill, including every command, reference, script,\n   and artifact that its body dispatches to. Record observed triggers, actual\n   decisions, durable artifacts, source evidence, and recurring failures.\n2. Separate that concrete inventory from contingent form: its name, phase\n   count, directory layout, historical cross-skill story, and inherited rules.\n   Keep source links; do not call inconvenient evidence noise.\n3. Form a new target expression team using references/expression-team.md. The\n   former Primary and Supporting P-IDs are provenance, not a verdict. If the\n   abstract function is already owned elsewhere, propose merge, retirement, or\n   demotion instead of rewriting a duplicate.\n4. Recompose the retained function as a new skill. Preserve only material that\n   enables its distinct action; move volatile or conditional material behind a\n   direct reference.\n5. Use references/evaluation.md to compare the old and new forms on the same\n   action and boundary probes. Report regression risk and migration work before\n   retiring the inherited form. Recompose expression through\n   references/expression-layers.md; do not polish mixed register in place.\n\nDo not silently change the Sequence or turn a project-local mechanism into a\ngeneral rule while rewriting."
+      },
+      "digest": "sha256:edac592036e1c40f13f401b8f2a9737acd96612050c9cfc60426d0b74c7c4a05"
+    },
+    "directReferences": {
+      "value": [
+        {
+          "authorship": "retained-source",
+          "sourceRef": "skills/skill-engineering/references/expression-team.md",
+          "revision": "sha256:c03d7600aaa0ba4329c1ff41bed987d12d6badfc34c391048db8a638a1b00c03",
+          "content": "# Target Expression Team\n\nUse this record before creating or materially rewriting a target skill. It is a\ndesign selection for one expression, not a principle-review committee.\n\n## Required record\n\n```text\nTarget action gap:\nActor and real operating conditions:\nConcrete source evidence:\nObservation that would show improvement:\n\nPrimary P-ID:\n  decision this P-ID owns here:\nSupporting P-IDs (0–3):\n  distinct decision contributed by each:\nCurrent task lead P-ID:\n\nAlternate candidate trial (optional, host-nominated only):\n  candidate record:\n  baseline choice without candidate:\n  different choice proposed:\n  disconfirming observation:\n\nExisting owner checked:\nWhy a skill is smaller or more truthful than alternatives:\nNon-scope and routing boundary:\n```\n\n## Selection rules\n\n- Resolve the Sequence through the source resolver in SKILL.md before selecting\n  P-IDs, then read only the selected interpretations. Record whether the host,\n  packaged baseline, or temporary refresh supplied the lineage.\n- Form the actual action gap, subject, conditions, and governing relation before\n  selecting the current lead. The contradiction must come from that concrete\n  object, not from the vocabulary of a preferred P-ID.\n- Select one Primary: it owns the skill's stable decision gate, not merely its\n  most attractive slogan.\n- Add a support only when it contributes a distinct recurring decision. Remove\n  a support that only restates the Primary or a local implementation choice. If\n  a selected P-ID does not change the skill's core method, remove it rather than\n  preserving a decorative lineage label.\n- Let the current lead differ from the Primary only when the live task's\n  principal contradiction requires it. Do not invent co-primary doctrine.\n- If two target skills own the same action and evidence, merge them or keep the\n  existing owner. A different name, directory, or model is not a new gate.\n- If the evidence suggests a missing cross-context principle, stop selection\n  and use principle-cultivation; do not hide it in a target skill.\n- A host-nominated alternate is an optional trial outside the expression team.\n  Use at most one, never list it as Primary or Supporting, and do not include it\n  in a portable Sequence snapshot. Retain the observed outcome in its candidate\n  record through principle cultivation.\n",
+          "excerpt": "# Target Expression Team\n\nUse this record before creating or materially rewriting a target skill. It is a\ndesign selection for one expression, not a principle-review committee.\n\n## Required record\n\n```text\nTarget action gap:\nActor and real operating conditions:\nConcrete source evidence:\nObservation that would show improvement:\n\nPrimary P-ID:\n  decision this P-ID owns here:\nSupporting P-IDs (0–3):\n  distinct decision contributed by each:\nCurrent task lead P-ID:\n\nAlternate candidate trial (optional, host-nominated only):\n  candidate record:\n  baseline choice without candidate:\n  different choice proposed:\n  disconfirming observation:\n\nExisting owner checked:\nWhy a skill is smaller or more truthful than alternatives:\nNon-scope and routing boundary:\n```\n"
+        },
+        {
+          "authorship": "retained-source",
+          "sourceRef": "skills/skill-engineering/references/expression-layers.md",
+          "revision": "sha256:e59762b1bb579438dc197c7d2e628d24cd3577b8243b56b871efc331565a81f4",
+          "content": "# Expression Layers (P16)\n\nUse when creating, rewriting, or reviewing any skill. Domain skills own **what**\nmust be decided; skill-engineering owns **how** that decision is expressed so\nthe practitioner can act.\n\n## Layer map\n\n| Layer | Typical artifact | Reader | Job |\n|---|---|---|---|\n| Trigger | `description` in frontmatter | Skill classifier | Match intent under budget; front-load use case |\n| Action | `SKILL.md` + `commands/*` | Agent executing | Enable the next judgment and action |\n| Doctrine | Optional `references/concepts.md` in the **target** skill | Agent on activation; stewards | State domain essence, vocabulary, boundaries — not P16 meta-rules |\n| Gates | Domain reference tables | Agent during classify / verify | Falsifiable tests for the domain |\n| Audience projection | Optional metaphor or `explain` output | Humans on request | Intuition or translation; never a second canon |\n| Public index | Host `README.md`, `design/` | Newcomers | Host-facing summary mapped to doctrine terms |\n\n**Rule:** If two layers use different words for the same thing, record the map\nin the target skill's doctrine file or in review notes — not scattered across\nSKILL.md and optional metaphor files.\n\n## Concepts document (domain doctrine)\n\nSome skills need a pause-and-resume **doctrine** artifact separate from the\nexecution prompt — especially when the domain is abstract and directory names\nare contingent form.\n\n- **Belongs in the target skill** as `references/concepts.md` (or host\n  `concepts/<skill>.md`): essence functions, domain vocabulary, domain\n  boundaries, host-specific layout examples.\n- **Does not belong there:** P16 layer rules, register policy, or skill-authoring\n  anti-patterns — those stay in this file and `evaluation.md`.\n\nStructure (adapt depth to need):\n\n1. **In plain words** — cognitive on-ramp for the domain action.\n2. **Essence** — 3–5 load-bearing functions (not folder names).\n3. **Domain vocabulary** — terms the skill's artifacts and gates use.\n4. **Optional audience projection** — metaphor or bilingual map, explicitly\n   subordinate to domain vocabulary.\n\nPattern source: archived `reframe` `concepts/<target>.md` workflow; generalized\nhere for any skill whose form was abstracted from inherited surface layout.\n\n## Register policy\n\n- **Commands:** stable English API names (`model`, `create`, `verify`). One-line\n  gloss in the command file is enough; do not alternate slogans in headings.\n- **SKILL.md body:** one operational register (match sibling skills such as\n  `context-engineering`). Triggers may include non-English phrases in\n  `description` only.\n- **Session artifacts:** use the target skill's domain vocabulary consistently.\n- **Metaphor:** optional layer; map every term back to domain vocabulary before\n  writing gates or verify tables.\n\n## Expression probes (review)\n\n| Failure | Symptom | Correction owner |\n|---|---|---|\n| Metaphor as canon | Verify gates written in metaphor terms only | skill-engineering `review` → target skill doctrine map |\n| Tree-first | Inventory opens with paths, not functions/classes | target skill `model` or equivalent |\n| Dual register | Headings mix languages without a declared map | unify SKILL.md; move map to doctrine |\n| Dual truth | Process file and host design use different taxonomies | artifact-organization `target`/`gap` or host design adoption |\n| Missing on-ramp | Reader sees metaphor before the action | add plain-words block to doctrine |\n| Expression in wrong skill | Domain skill teaches P16 or skill-authoring | move meta guidance here; trim domain skill |\n\n## Workflow hooks\n\n- **create** — after expression-team selection, check whether doctrine file is\n  needed; if yes, draft concepts before SKILL.md prose.\n- **rewrite** — separate inherited **function** from inherited **wording**; regen\n  expression through this layer map; do not polish mixed register in place.\n- **review** — run expression probes before aesthetic comments.\n\n## Handoff from domain skills\n\nWhen a domain skill surfaces register inconsistency during\norganization or dogfood work, route expression work to `skill-engineering\nreview` or `rewrite` — do not grow authoring rules inside the domain skill.\n",
+          "excerpt": "# Expression Layers (P16)\n\nUse when creating, rewriting, or reviewing any skill. Domain skills own **what**\nmust be decided; skill-engineering owns **how** that decision is expressed so\nthe practitioner can act.\n\n## Layer map\n\n| Layer | Typical artifact | Reader | Job |\n|---|---|---|---|\n| Trigger | `description` in frontmatter | Skill classifier | Match intent under budget; front-load use case |\n| Action | `SKILL.md` + `commands/*` | Agent executing | Enable the next judgment and action |\n| Doctrine | Optional `references/concepts.md` in the **target** skill | Agent on activation; stewards | State domain essence, vocabulary, boundaries — not P16 meta-rules |\n| Gates | Domain reference tables | Agent during classify / verify | Falsifiable tests for the domain |\n| Audience projection | Optional metaphor or `explain` output | Humans on request | Intuition or translation; never a second canon |\n| Public index | Host `README.md`, `design/` | Newcomers | Host-facing summary mapped to doctrine terms |\n\n**Rule:** If two layers use different words for the same thing, record the map\nin the target skill's doctrine file or in review notes — not scattered across\nSKILL.md and optional metaphor files.\n## Workflow hooks\n\n- **create** — after expression-team selection, check whether doctrine file is\n  needed; if yes, draft concepts before SKILL.md prose.\n- **rewrite** — separate inherited **function** from inherited **wording**; regen\n  expression through this layer map; do not polish mixed register in place.\n- **review** — run expression probes before aesthetic comments.\n\n## Handoff from domain skills\n\nWhen a domain skill surfaces register inconsistency during\norganization or dogfood work, route expression work to `skill-engineering\nreview` or `rewrite` — do not grow authoring rules inside the domain skill."
+        },
+        {
+          "authorship": "retained-source",
+          "sourceRef": "skills/skill-engineering/references/evaluation.md",
+          "revision": "sha256:d54926d8c7af17552a7d8d531af055ee96558b597661b2afc0bcef4ced057ea5",
+          "content": "# Skill Evaluation Surface\n\nUse an evaluation that can reveal a failure in the claimed agent behavior.\nChoose only probes that change the deployment decision.\n\n## Minimum probe set\n\n| Probe | Question | Evidence to retain |\n|---|---|---|\n| Action | Does the agent make the intended judgment and take the enabled next action? | Raw task, output or changed artifact, and acceptance observation. |\n| Boundary | Does it avoid triggering, overreaching, or claiming ownership outside its scope? | Boundary task and routing or refusal evidence. |\n| Context | Does the required guidance appear at the layer where it affects the decision without loading irrelevant detail? | Loaded paths, omitted detail, and resulting action. |\n\nAdd an adversarial, long-context, or comparison probe only when the skill claims\nto withstand that condition or the risk justifies it.\n\n## Independent comparison\n\nWhen a claim says the skill improves behavior, use a fresh evaluator with the\nraw task and compare a baseline with a skill-enabled run on the same acceptance\ncondition. Without that comparison, evidence may show compatible behavior but\ncannot attribute improvement to the skill. Do not leak the intended answer or\nsuspected failure.\n\nIf no independent evaluator or safe baseline is available, run the same probes\nbut label the result self-evaluated and attribution unproven. Structural checks,\nprose review, and a passing happy path are not substitutes for this distinction.\n\n## Prompt-composition attribution\n\nTreat a prompt as a composition of possible carriers rather than attributing\nbehavior to its most visible label. A role, principle, rule, example, relation,\nordering, repetition, output contract, or hard prohibition may redirect the\nAgent; none is load-bearing merely because it sounds precise.\n\nBefore claiming that an expression creates a stronger reasoning path:\n\n1. Name the observable checkpoints it should change—for example object\n   formation, relation recovery, contradiction diagnosis, action selection,\n   constraint retention, or verification. Behavioral outputs can support these\n   checkpoints; they do not by themselves establish an internal neural pathway.\n2. Compare the smallest useful conditions. Include a no-treatment baseline,\n   remove suspected decorative predicates one at a time, compare a role label\n   with the relations it names, and vary order or paraphrase only when that is\n   part of the claim. Keep task evidence, message authority, tools, result\n   contract, and acceptance rubric fixed.\n3. Qualify task headroom with repeated baselines before running the full matrix.\n   Stop and retain the probe when the baseline is ceiling, or when every sample\n   fails through the same action or hard boundary. Do not replace the task after\n   seeing formal outputs; a new task starts a new campaign.\n4. Score decision and boundary differences separately from vocabulary,\n   confidence, length, or style. A longer explanation is not a stronger path.\n   Preserve negative results, ceiling tasks that every condition solves, and\n   floor tasks whose untreated samples all fail alike; they show where the probe\n   cannot attribute improvement.\n5. For a multilingual claim, use independently natural packets in each\n   language and review their semantic alignment. Preserve object, actor,\n   governing relation, source/projection and authority distinctions; do not\n   translate API keys, enum values, IDs, or exact command names. A literal\n   translation may be retained as a separate translation-effect condition.\n6. Repeat decision-changing conditions across more than one task and fresh run.\n   Add another model family before claiming a portable expression effect. With\n   single-run or single-model evidence, report the observed output difference\n   and leave causal attribution unresolved.\n\nPrefer removing a role noun, adjective, repeated qualifier, prohibition, or\nstep when its ablation preserves the intended checkpoints and hard boundaries.\nDo not mechanically prune frequent words: a relation such as ownership,\nsource/projection, proposer/verifier, or read-old/write-new may be expressed\nrepeatedly because different surfaces require the same invariant.\n\n## Result record\n\n```text\nClaim:\nProbe and supplied artifacts:\nExpected disconfirming observation:\nObserved action:\nEvidence path or transcript anchor:\nVerdict: supported | failed | inconclusive\nRevision or deployment decision:\n```\n\nRetain failures and inconclusive results. They define the skill's boundary and\nprevent a later rewrite from treating an untested assertion as fact.\n",
+          "excerpt": "# Skill Evaluation Surface\n\nUse an evaluation that can reveal a failure in the claimed agent behavior.\nChoose only probes that change the deployment decision.\n\n## Minimum probe set\n\n| Probe | Question | Evidence to retain |\n|---|---|---|\n| Action | Does the agent make the intended judgment and take the enabled next action? | Raw task, output or changed artifact, and acceptance observation. |\n| Boundary | Does it avoid triggering, overreaching, or claiming ownership outside its scope? | Boundary task and routing or refusal evidence. |\n| Context | Does the required guidance appear at the layer where it affects the decision without loading irrelevant detail? | Loaded paths, omitted detail, and resulting action. |\n\nAdd an adversarial, long-context, or comparison probe only when the skill claims\nto withstand that condition or the risk justifies it.\n\n## Independent comparison\n\nWhen a claim says the skill improves behavior, use a fresh evaluator with the\nraw task and compare a baseline with a skill-enabled run on the same acceptance\ncondition. Without that comparison, evidence may show compatible behavior but\ncannot attribute improvement to the skill. Do not leak the intended answer or\nsuspected failure.\n\nIf no independent evaluator or safe baseline is available, run the same probes\nbut label the result self-evaluated and attribution unproven. Structural checks,\nprose review, and a passing happy path are not substitutes for this distinction.\n## Result record\n\n```text\nClaim:\nProbe and supplied artifacts:\nExpected disconfirming observation:\nObserved action:\nEvidence path or transcript anchor:\nVerdict: supported | failed | inconclusive\nRevision or deployment decision:\n```"
+        }
+      ],
+      "digest": "sha256:68fab84c00dcca63d8cbabb0ba37575361d1e1b2186d15b640234a334d202c60"
+    },
+    "sequenceSource": {
+      "value": {
+        "authorship": "retained-source",
+        "sourceRef": "principles/SEQUENCE.md",
+        "revision": "sha256:e600edcde4b660760837636ab9bbd594f55a0c646ef92bd957266fd07b5e5735",
+        "content": "# Principle Sequence\n\nP01｜原则高于规则｜一般化判断\n\nP02｜实事求是｜唯物主义认识论\n\nP03｜实践—认识—再实践｜实践论\n\nP04｜主要矛盾｜矛盾论\n\nP05｜具体问题具体分析｜矛盾特殊性\n\nP06｜本质与现象｜辩证法\n\nP07｜由具体经抽象再上升为具体｜马克思主义哲学\n\nP08｜可证伪性｜科学哲学\n\nP09｜注意力分层｜认知与信息架构\n\nP10｜有限人类带宽｜人机协作\n\nP11｜决策权与执行权分离｜组织设计\n\nP12｜外化记忆与代际继承｜分布式认知\n\nP13｜主张不等于事实；事实须经可追溯的验证提交｜实践论 / 控制论\n\nP14｜可由源重建者只是投影，不得拥有事实权｜系统论 / 事件溯源\n\nP15｜只选择化解当前矛盾且保留硬约束的最小有效跃迁｜控制论 / 动态规划\n\nP16｜表达形式须使实践主体能够行动；形式错位，正确内容亦会失效｜辩证法 / 实践论\n",
+        "excerpt": "P01｜原则高于规则｜一般化判断\nP07｜由具体经抽象再上升为具体｜马克思主义哲学\n\nP08｜可证伪性｜科学哲学\nP15｜只选择化解当前矛盾且保留硬约束的最小有效跃迁｜控制论 / 动态规划\n\nP16｜表达形式须使实践主体能够行动；形式错位，正确内容亦会失效｜辩证法 / 实践论"
+      },
+      "digest": "sha256:86beb6b926bd069654559978cb5cfbb98e18f87d290f02b1343e3e20dc16d357"
+    },
+    "principleLineage": {
+      "value": {
+        "authorship": "deterministically-derived",
+        "sourceRef": "derived:skill-engineering-principle-lineage",
+        "sourceRefs": [
+          "skills/skill-engineering/SKILL.md",
+          "principles/SEQUENCE.md"
+        ],
+        "revision": "sha256:f2c657e3e28476f0d6f44a4fd741617b747e91b4f87a88d876b29a8560c5551c",
+        "content": "Primary: P16\nSupporting: P09, P08, P15\nP16｜表达形式须使实践主体能够行动；形式错位，正确内容亦会失效｜辩证法 / 实践论\nP09｜注意力分层｜认知与信息架构\nP08｜可证伪性｜科学哲学\nP15｜只选择化解当前矛盾且保留硬约束的最小有效跃迁｜控制论 / 动态规划",
+        "primary": "P16",
+        "supporting": [
+          "P09",
+          "P08",
+          "P15"
+        ],
+        "excerpt": "Primary: P16\nSupporting: P09, P08, P15\nP16｜表达形式须使实践主体能够行动；形式错位，正确内容亦会失效｜辩证法 / 实践论\nP09｜注意力分层｜认知与信息架构\nP08｜可证伪性｜科学哲学\nP15｜只选择化解当前矛盾且保留硬约束的最小有效跃迁｜控制论 / 动态规划"
+      },
+      "digest": "sha256:c2bf2a9509bd25d4cb3c7de03bbc775c0c877e9acf47be8d4227acd994afb88f"
+    },
+    "runtimeObservation": {
+      "value": {
+        "authorship": "fixture-authored",
+        "sourceRef": "fixture:runtime-observation/none",
+        "revision": "sha256:c13592b29317ad27d4bbb38a695d06d4fed32d9976de1094ed1a69ab3b32e199",
+        "content": "这个冻结 fixture 没有绑定 Agent runtime activation trace 或实际 loaded-path event。",
+        "standing": "activation-unavailable",
+        "excerpt": "这个冻结 fixture 没有绑定 Agent runtime activation trace 或实际 loaded-path event。"
+      },
+      "digest": "sha256:e459d17e9101f646cddf990c1b8f9c38fda3d05aaf72aaba49dbf2439b5d2251"
+    },
+    "behaviorEvidence": {
+      "value": {
+        "authorship": "fixture-authored",
+        "sourceRef": "fixture:behavior-evidence/none",
+        "sourceRefs": [
+          "fixture:behavior-evidence/none",
+          "skills/skill-engineering/references/evaluation.md"
+        ],
+        "revision": "sha256:d528b16f1d3dab436766fcb86bf6577e24ee150d1c3a9ee9f64f2965ab12b7bf",
+        "content": "没有保留同一 rewrite 请求的 baseline/treatment 行为比较；结构检查不能证明行为改善。",
+        "standing": "behavior-evidence-unavailable",
+        "excerpt": "没有保留同一 rewrite 请求的 baseline/treatment 行为比较；结构检查不能证明行为改善。\n\n# Skill Evaluation Surface\n\nUse an evaluation that can reveal a failure in the claimed agent behavior.\nChoose only probes that change the deployment decision.\n\n## Minimum probe set\n\n| Probe | Question | Evidence to retain |\n|---|---|---|\n| Action | Does the agent make the intended judgment and take the enabled next action? | Raw task, output or changed artifact, and acceptance observation. |\n| Boundary | Does it avoid triggering, overreaching, or claiming ownership outside its scope? | Boundary task and routing or refusal evidence. |\n| Context | Does the required guidance appear at the layer where it affects the decision without loading irrelevant detail? | Loaded paths, omitted detail, and resulting action. |\n\nAdd an adversarial, long-context, or comparison probe only when the skill claims\nto withstand that condition or the risk justifies it.\n\n## Independent comparison\n\nWhen a claim says the skill improves behavior, use a fresh evaluator with the\nraw task and compare a baseline with a skill-enabled run on the same acceptance\ncondition. Without that comparison, evidence may show compatible behavior but\ncannot attribute improvement to the skill. Do not leak the intended answer or\nsuspected failure.\n\nIf no independent evaluator or safe baseline is available, run the same probes\nbut label the result self-evaluated and attribution unproven. Structural checks,\nprose review, and a passing happy path are not substitutes for this distinction.\n## Result record\n\n```text\nClaim:\nProbe and supplied artifacts:\nExpected disconfirming observation:\nObserved action:\nEvidence path or transcript anchor:\nVerdict: supported | failed | inconclusive\nRevision or deployment decision:\n```"
+      },
+      "digest": "sha256:318062e46e0ab15cbf4bb9d2a692deb8f8110aac95a352cfaac8f57bb3446488"
+    }
+  },
+  "projection": {
+    "value": {
+      "version": "human-agent-visualization.skill-lens-projection.v2",
+      "subject": {
+        "id": "skill-engineering",
+        "operation": "rewrite",
+        "revision": "sha256:86219a8d9906dc2c7547e661e24d0fd5309a90584c99d63c914d6463702ff505",
+        "sourceSetRevision": "sha256:fa2116d55267ddc5607c70b7cca006c0b111abef8fab5f3d02679fbd0ae07192"
+      },
+      "question": "为什么 skill-engineering 与这个 rewrite 请求相关，它会走哪条证据路径，并在哪里停？",
+      "standings": {
+        "triggerCompatibility": "trigger-compatible",
+        "methodEligibility": "eligibility-unproven",
+        "runtimeActivation": "activation-unavailable",
+        "behaviorEvidence": "behavior-evidence-unavailable"
+      },
+      "steps": [
+        {
+          "id": "request",
+          "order": 1,
+          "layer": "source",
+          "title": "冻结 rewrite 请求",
+          "summary": "请 rewrite 现有 skill-engineering：不要在原文上润色；从完整继承表面重构，并用同一 action、boundary 与 context probes 比较旧新行为。",
+          "evidence": {
+            "authority": "冻结的实验请求记录",
+            "sourceRef": "fixture:principal-request/skill-engineering-rewrite",
+            "sourceRefs": [
+              "fixture:principal-request/skill-engineering-rewrite"
+            ],
+            "revision": "sha256:91676a885f2aa5b45293987a75367beea638d88343dffcf7c95a91cc759beeb9",
+            "freshness": {
+              "kind": "frozen",
+              "observedAt": "2026-08-05T18:00:00.000Z"
+            },
+            "standing": "retained-request",
+            "disconfirmingEvidence": "如果原始请求不是 rewrite 现有 Skill，当前 dispatch 选择必须重建。",
+            "excerpt": "请 rewrite 现有 skill-engineering：不要在原文上润色；从完整继承表面重构，并用同一 action、boundary 与 context probes 比较旧新行为。"
+          }
+        },
+        {
+          "id": "trigger-compatibility",
+          "order": 2,
+          "layer": "projection",
+          "title": "触发兼容性",
+          "summary": "请求要求 rewrite 现有 Skill；skill-engineering 明确声明 rewrite 路径。",
+          "evidence": {
+            "authority": "请求 intent 与 Skill dispatch 的确定性等值检查",
+            "sourceRef": "derived:trigger-compatibility",
+            "sourceRefs": [
+              "fixture:principal-request/skill-engineering-rewrite",
+              "skills/skill-engineering/SKILL.md"
+            ],
+            "revision": "prototype-r3",
+            "freshness": {
+              "kind": "frozen",
+              "observedAt": "2026-08-05T18:00:00.000Z"
+            },
+            "standing": "trigger-compatible",
+            "disconfirmingEvidence": "请求 intent 改变，或 Skill 不再声明 rewrite dispatch，会推翻兼容性。",
+            "excerpt": "request.operation = rewrite ↔ declared operation = rewrite"
+          }
+        },
+        {
+          "id": "action-gap",
+          "order": 3,
+          "layer": "explanation",
+          "title": "Action-gap hypothesis",
+          "summary": "具体请求没有保留 recurring failure 记录；这里只展示待验证的 fixture hypothesis。",
+          "evidence": {
+            "authority": "Fixture-authored hypothesis；已采纳决定只支持通用 owner/gate",
+            "sourceRef": "fixture:hypothesis/skill-engineering-action-gap",
+            "sourceRefs": [
+              "fixture:hypothesis/skill-engineering-action-gap",
+              "design/decisions/003-skill-engineering-first-slice.md"
+            ],
+            "revision": "sha256:029e727bcbb4e596576e6a66007e0998af2c61142494555944f937338c15b4fb",
+            "freshness": {
+              "kind": "frozen",
+              "observedAt": "2026-08-05T18:00:00.000Z"
+            },
+            "standing": "fixture-hypothesis",
+            "disconfirmingEvidence": "真实 failure 若不重复、未定位到 Skill 表达层，或属于其他 owner，就推翻该 hypothesis。",
+            "excerpt": "Hypothesis：这个具体请求可能来自重复、已定位到 Skill 表达层的失败；当前 fixture 没有保留这些 failure records。\n\n通用 gate 来源摘录：\n## Context\n\nThe collection needs a first downstream expression that improves agent action\nitself: harnesses, skills, and other agent-facing instructions. Generic skill\nformat guidance is useful source material, but it cannot decide whether a\nproposed behavior belongs in a reusable skill, which principles govern it, or\nwhether the resulting expression actually changes behavior.\n\n## Decision\n\nCreate `skill-engineering` as the first regenerated skill. It owns one gate:\n\n> Does this observed agent-action gap require a reusable, testable skill\n> expression, and what is the smallest expression that closes it?\nIts stable expression team is Primary P16 with P09, P08, and P15 supporting:\n\n- P16 asks whether the form enables its actual agent to act.\n- P09 separates always-needed guidance from activated method and on-demand\n  detail.\n- P08 requires a behavior claim to expose a test that could disconfirm it.\n- P15 prevents a new skill, rule, file, or test layer that does not close the\n  present gap.\n\nFor every target skill, `skill-engineering` forms a separate, temporary\n**expression team**: exactly one target Primary P-ID and up to three target\nsupports, selected from the Sequence and justified by the target's live\ncontradiction. This team is downstream design work, not a principle-review\ncommittee and never an authority over the Sequence. `principle-cultivation`\nremains the sole route for proposing or changing principles.\n\nThe skill must test a target's trigger, action path, boundary, and context\nload before treating it as a successful expression. If the gap is local,\none-time, tool-specific, or already covered by another skill, it writes a\nsmaller form or declines to create a skill.\n## Human approval\n\nApproved in the instruction to first form a Sequence-based skill that writes\nand improves other skills on 2026-07-09."
+          }
+        },
+        {
+          "id": "minimum-form",
+          "order": 4,
+          "layer": "explanation",
+          "title": "Minimum-form hypothesis",
+          "summary": "具体请求没有保留 minimum-form decision；rewrite-existing-skill 只是待验证假设。",
+          "evidence": {
+            "authority": "Fixture-authored hypothesis；没有事实或接受权",
+            "sourceRef": "fixture:hypothesis/skill-engineering-minimum-form",
+            "sourceRefs": [
+              "fixture:hypothesis/skill-engineering-minimum-form"
+            ],
+            "revision": "sha256:1562c2ead5f87a691260192f4f09b2c7d42fcc2cd9d11d7f1c1714ec26fa9dba",
+            "freshness": {
+              "kind": "frozen",
+              "observedAt": "2026-08-05T18:00:00.000Z"
+            },
+            "standing": "fixture-hypothesis",
+            "disconfirmingEvidence": "若现有 command、reference 或项目局部说明已能闭合缺口，就不应 rewrite 整个 Skill。",
+            "excerpt": "Hypothesis：rewrite-existing-skill 可能是最小形式；当前 fixture 没有保留这个具体请求的 minimum-form decision。"
+          }
+        },
+        {
+          "id": "method-eligibility",
+          "order": 5,
+          "layer": "projection",
+          "title": "方法适格性",
+          "summary": "没有具体 recurring failure 与 minimum-form 决定，因此当前只能是 eligibility-unproven。",
+          "evidence": {
+            "authority": "由缺失的具体 gate 输入重建的投影",
+            "sourceRef": "derived:method-eligibility",
+            "sourceRefs": [
+              "fixture:hypothesis/skill-engineering-action-gap",
+              "fixture:hypothesis/skill-engineering-minimum-form"
+            ],
+            "revision": "prototype-r3",
+            "freshness": {
+              "kind": "frozen",
+              "observedAt": "2026-08-05T18:00:00.000Z"
+            },
+            "standing": "eligibility-unproven",
+            "disconfirmingEvidence": "保留可核对的 recurring failure、localized owner 与 minimum-form decision 后才可重建此 standing。",
+            "excerpt": "missing: retained recurring failure + retained minimum-form decision"
+          }
+        },
+        {
+          "id": "owned-judgment",
+          "order": 6,
+          "layer": "source",
+          "title": "拥有的判断",
+          "summary": "判断可复用 Skill 是否是闭合 Agent 行动缺口的最小形式，并把它表达成可测试的行动路径。",
+          "evidence": {
+            "authority": "skill-engineering 的 Scope 与 Core method",
+            "sourceRef": "skills/skill-engineering/SKILL.md",
+            "sourceRefs": [
+              "skills/skill-engineering/SKILL.md"
+            ],
+            "revision": "sha256:86219a8d9906dc2c7547e661e24d0fd5309a90584c99d63c914d6463702ff505",
+            "freshness": {
+              "kind": "frozen",
+              "observedAt": "2026-08-05T18:00:00.000Z"
+            },
+            "standing": "source-declared-scope",
+            "disconfirmingEvidence": "若问题不是 Skill trigger、表达、分层或行为评价，它必须路由给实际 owner。",
+            "excerpt": "## Scope\n\nEngineer an agent-facing expression only when an observed action gap recurs and\na reusable skill is the smallest form that can close it. The objective is not a\nwell-formatted prompt; it is an agent that can make the intended judgment and\ntake the intended action under its real context constraints.\n\nDo not create a skill for a one-time request, a vendor command reference, an\nimplementation detail, or a behavior already owned by a more specific skill.\nUse a project document, command, reference, or local adapter when that is the\ntruer form. Do not create, interpret, or revise Sequence entries here; route a\npossible new principle to principle-cultivation."
+          }
+        },
+        {
+          "id": "rewrite-dispatch",
+          "order": 7,
+          "layer": "projection",
+          "title": "选择 rewrite dispatch",
+          "summary": "所选 rewrite dispatch 要求／预计加载 owning SKILL.md、rewrite command 与其直接 references；这不是 observed loading。",
+          "evidence": {
+            "authority": "从请求 operation 与直接 dispatch/reference 边确定性选择",
+            "sourceRef": "derived:selected-declared-path",
+            "sourceRefs": [
+              "skills/skill-engineering/SKILL.md",
+              "skills/skill-engineering/commands/rewrite.md",
+              "skills/skill-engineering/references/expression-team.md",
+              "skills/skill-engineering/references/expression-layers.md",
+              "skills/skill-engineering/references/evaluation.md"
+            ],
+            "revision": "prototype-r3",
+            "freshness": {
+              "kind": "frozen",
+              "observedAt": "2026-08-05T18:00:00.000Z"
+            },
+            "standing": "selected-declared-path",
+            "disconfirmingEvidence": "若操作改为 create/review/test，或 rewrite command 的直接依赖改变，必须重建选择。",
+            "excerpt": "skills/skill-engineering/commands/rewrite.md\nskills/skill-engineering/references/expression-team.md\nskills/skill-engineering/references/expression-layers.md\nskills/skill-engineering/references/evaluation.md"
+          }
+        },
+        {
+          "id": "principle-lineage",
+          "order": 8,
+          "layer": "source",
+          "title": "声明的 Principle lineage",
+          "summary": "P16 为 Primary；P09、P08、P15 为 Supporting。声明不等于因果证明。",
+          "evidence": {
+            "authority": "Skill 声明与宿主 Sequence",
+            "sourceRef": "derived:skill-engineering-principle-lineage",
+            "sourceRefs": [
+              "skills/skill-engineering/SKILL.md",
+              "principles/SEQUENCE.md"
+            ],
+            "revision": "sha256:f2c657e3e28476f0d6f44a4fd741617b747e91b4f87a88d876b29a8560c5551c",
+            "freshness": {
+              "kind": "frozen",
+              "observedAt": "2026-08-05T18:00:00.000Z"
+            },
+            "standing": "declared-lineage-only",
+            "disconfirmingEvidence": "没有 expression-team 决策记录或行为对照时，不能声称某个 P-ID 导致行为改善。",
+            "excerpt": "Primary: P16\nSupporting: P09, P08, P15\nP16｜表达形式须使实践主体能够行动；形式错位，正确内容亦会失效｜辩证法 / 实践论\nP09｜注意力分层｜认知与信息架构\nP08｜可证伪性｜科学哲学\nP15｜只选择化解当前矛盾且保留硬约束的最小有效跃迁｜控制论 / 动态规划"
+          }
+        },
+        {
+          "id": "runtime-activation",
+          "order": 9,
+          "layer": "source",
+          "title": "Runtime activation",
+          "summary": "冻结包没有保留 runtime 激活或实际文件加载轨迹。",
+          "evidence": {
+            "authority": "冻结 runtime observation",
+            "sourceRef": "fixture:runtime-observation/none",
+            "sourceRefs": [
+              "fixture:runtime-observation/none"
+            ],
+            "revision": "sha256:c13592b29317ad27d4bbb38a695d06d4fed32d9976de1094ed1a69ab3b32e199",
+            "freshness": {
+              "kind": "frozen",
+              "observedAt": "2026-08-05T18:00:00.000Z"
+            },
+            "standing": "activation-unavailable",
+            "disconfirmingEvidence": "绑定同一请求与 Skill revision 的 activation trace 可以把该 standing 提升为 observed。",
+            "excerpt": "这个冻结 fixture 没有绑定 Agent runtime activation trace 或实际 loaded-path event。"
+          }
+        },
+        {
+          "id": "behavior-evidence",
+          "order": 10,
+          "layer": "source",
+          "title": "行为改善证据",
+          "summary": "结构完整不证明 rewrite 改善了 Agent 行为；当前没有匹配 baseline/treatment 的结果。",
+          "evidence": {
+            "authority": "冻结 evaluation evidence record",
+            "sourceRef": "fixture:behavior-evidence/none",
+            "sourceRefs": [
+              "fixture:behavior-evidence/none",
+              "skills/skill-engineering/references/evaluation.md"
+            ],
+            "revision": "sha256:d528b16f1d3dab436766fcb86bf6577e24ee150d1c3a9ee9f64f2965ab12b7bf",
+            "freshness": {
+              "kind": "frozen",
+              "observedAt": "2026-08-05T18:00:00.000Z"
+            },
+            "standing": "behavior-evidence-unavailable",
+            "disconfirmingEvidence": "同一 action/boundary/context probes 的独立对照结果，才能支持改善或归因。",
+            "excerpt": "没有保留同一 rewrite 请求的 baseline/treatment 行为比较；结构检查不能证明行为改善。\n\n# Skill Evaluation Surface\n\nUse an evaluation that can reveal a failure in the claimed agent behavior.\nChoose only probes that change the deployment decision.\n\n## Minimum probe set\n\n| Probe | Question | Evidence to retain |\n|---|---|---|\n| Action | Does the agent make the intended judgment and take the enabled next action? | Raw task, output or changed artifact, and acceptance observation. |\n| Boundary | Does it avoid triggering, overreaching, or claiming ownership outside its scope? | Boundary task and routing or refusal evidence. |\n| Context | Does the required guidance appear at the layer where it affects the decision without loading irrelevant detail? | Loaded paths, omitted detail, and resulting action. |\n\nAdd an adversarial, long-context, or comparison probe only when the skill claims\nto withstand that condition or the risk justifies it.\n\n## Independent comparison\n\nWhen a claim says the skill improves behavior, use a fresh evaluator with the\nraw task and compare a baseline with a skill-enabled run on the same acceptance\ncondition. Without that comparison, evidence may show compatible behavior but\ncannot attribute improvement to the skill. Do not leak the intended answer or\nsuspected failure.\n\nIf no independent evaluator or safe baseline is available, run the same probes\nbut label the result self-evaluated and attribution unproven. Structural checks,\nprose review, and a passing happy path are not substitutes for this distinction.\n## Result record\n\n```text\nClaim:\nProbe and supplied artifacts:\nExpected disconfirming observation:\nObserved action:\nEvidence path or transcript anchor:\nVerdict: supported | failed | inconclusive\nRevision or deployment decision:\n```"
+          }
+        },
+        {
+          "id": "agent-reading",
+          "order": 11,
+          "layer": "explanation",
+          "title": "Agent 当前读法",
+          "summary": "这条路径只支持触发兼容与 selected declared path；方法适格性、runtime 激活、遵循和行为改善均未被证明。",
+          "evidence": {
+            "authority": "临时 Agent 解释",
+            "sourceRef": "无——仅为当前渲染",
+            "sourceRefs": [],
+            "revision": "ephemeral",
+            "freshness": {
+              "kind": "frozen",
+              "observedAt": "2026-08-05T18:00:00.000Z"
+            },
+            "standing": "ephemeral-explanation",
+            "disconfirmingEvidence": "隐藏 Agent 解释后，来源与投影仍必须支持相同边界判断。",
+            "excerpt": "trigger-compatible + eligibility-unproven + activation-unavailable + behavior-evidence-unavailable"
+          }
+        }
+      ],
+      "authorityStop": {
+        "title": "必须停在这里",
+        "summary": "Skill 不得修改 Principle Sequence，也不得把结构完整或静态声明当成行为改善。",
+        "standing": "source-declared-boundary",
+        "sourceRef": "skills/skill-engineering/SKILL.md",
+        "revision": "sha256:86219a8d9906dc2c7547e661e24d0fd5309a90584c99d63c914d6463702ff505",
+        "disconfirmingEvidence": "若 owning SKILL.md 的 Operating boundaries 或 Completion standard 改变，必须重建这条边界。",
+        "excerpt": "Do not create a skill for a one-time request, a vendor command reference, an\nimplementation detail, or a behavior already owned by a more specific skill.\nUse a project document, command, reference, or local adapter when that is the\ntruer form. Do not create, interpret, or revise Sequence entries here; route a\npossible new principle to principle-cultivation.\n5. **Test behavior, not prose.** Define a task that would reveal the intended\n   behavior, a boundary task that should not trigger or should route elsewhere,\n   and the evidence each outcome must provide. When claiming improvement, use\n   a comparable baseline or label attribution unproven. When the claim concerns\n   prompt expression itself, isolate the proposed carrier through predicate,\n   composition, or order ablation; use matched natural-language conditions for\n   every language covered by the claim. Use references/evaluation.md. Revise\n   from observed failure rather than from aesthetic preference.\n6. **Commit the smallest valid expression.** Preserve source links and record\n   remaining uncertainty. In source-bearing research, interpretation, proposal,\n   or review artifacts, keep descriptive inline links on the claims they support;\n   a detached bibliography alone is insufficient. A passing format check proves\n   only structure; do not claim behavior improvement without behavior evidence."
+      }
+    },
+    "digest": "sha256:6147826c78ecfc43068a686d74aec21246a1b228f7418381f8ae50cffe5a1ae7"
+  },
+  "bindingDigest": "sha256:d8c27fefa06509f7e220d790d361a0705f6c9f23604621b2a7f5d87e9b248b50"
+}

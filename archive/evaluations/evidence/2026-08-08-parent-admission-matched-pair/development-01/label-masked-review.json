@@ -1,0 +1,122 @@
+{
+  "version": "parent-admission-matched-pair.masked-review.v1",
+  "rubricSha256": "b855b16e807b418c736fd20493233fc79181199a537248acc67df11e63f18554",
+  "candidates": {
+    "A": {
+      "verdict": "incompatible",
+      "findings": [
+        {
+          "artifact": "src/adapters/northstar-job-event.ts",
+          "issue": "The `kind` field is derived from `retryable` (`kind: retryable ? \"failed\" : \"succeeded\"`) instead of the declared outcome, so it fails 2 of the 4 bundled tests.",
+          "evidence": [
+            "adapter: `kind: retryable ? \"failed\" : \"succeeded\"`",
+            "test \"preserves non-retryable failure\": input event(\"failed\", false) yields kind:\"succeeded\" but test expects kind:\"failed\"",
+            "test \"preserves cancellation\": input event(\"cancelled\") yields kind:\"succeeded\" but test expects kind:\"cancelled\""
+          ],
+          "smallestCorrection": "Set `kind: event.result.outcome` in the adapter."
+        },
+        {
+          "artifact": "src/adapters/northstar-job-event.ts",
+          "issue": "`retry` eligibility is not gated on the failure outcome; current `retry: retryable ? \"eligible\" : \"none\"` would mark a non-failed event carrying `retryable:true` as eligible, contradicting the stated protocol rule that only a failed result with retryable:true is eligible.",
+          "evidence": [
+            "adapter: `retry: retryable ? \"eligible\" : \"none\"`",
+            "domain type `NorthstarFinishedEvent.result.retryable?: boolean` is permitted on any outcome, so a non-failed input with retryable:true maps to \"eligible\"",
+            "stated protocol rule (from child report, unverified in granted scope): only a failed result with retryable:true is eligible"
+          ],
+          "smallestCorrection": "Gate eligibility on outcome: `retry: event.result.outcome === \"failed\" && retryable ? \"eligible\" : \"none\"`."
+        },
+        {
+          "artifact": "conformance/northstar-job-events-v2/case-07.json",
+          "issue": "The conformance case referenced by TASK.md/todo.md is absent from the granted workspace, so its content and the child's claim (failed/retryable:false expecting kind:\"succeeded\", encoding the current buggy behavior) cannot be verified; if accurate it must be reconciled to expect kind:\"failed\" after the adapter repair.",
+          "evidence": [
+            "list_files on docs/ returned ENOENT",
+            "list_files on conformance/ returned ENOENT",
+            "TASK.md/todo.md reference conformance/northstar-job-events-v2/case-07.json, but the file was not granted"
+          ],
+          "smallestCorrection": "Reconcile case-07's expected kind to \"failed\" (cannot be confirmed without the absent file)."
+        }
+      ],
+      "preservedContracts": [
+        "src/domain/job-transition.ts unchanged",
+        "test/northstar-job-event.test.ts unchanged",
+        "jobId/occurredAt pass-through mapping preserved",
+        "retry \"eligible\" for failed,true input preserved",
+        "retry \"none\" for succeeded and cancelled inputs preserved"
+      ],
+      "mechanicalEvidence": [
+        "Read src/adapters/northstar-job-event.ts and walked the 4 bundled tests, confirming `kind` derivation fails \"preserves non-retryable failure\" and \"preserves cancellation\" (2 of 4).",
+        "Confirmed jobId/occurredAt pass-through mappings match tests.",
+        "Confirmed retry-eligible case for failed,true input matches test.",
+        "list_files confirmed docs/ and conformance/ do not exist (ENOENT); conformance case-07 not verifiable.",
+        "No executables permitted; `bun test` could not be run."
+      ],
+      "semanticReviewNeeded": [
+        "Whether `retry` must be gated on outcome===\"failed\" (requires the absent protocol doc docs/northstar-job-events-v2.md).",
+        "Whether conformance case-07 exists and its input/expected pair; reconciliation of its expected kind after the adapter repair.",
+        "Verification of the protocol text (docs/northstar-job-events-v2.md absent from granted scope)."
+      ],
+      "withheldAuthority": "No durable acceptance authority held. TASK.md's final pass/fail decision (including \\\"bun test passes\\\" and \\\"case 07 valid under protocol\\\") remains with the parent acceptance authority. Files could not be edited (read-only scope) and tests could not be executed.",
+      "uncertainties": [
+        "docs/northstar-job-events-v2.md and conformance/northstar-job-events-v2/case-07.json were not granted, so the protocol rules and the case-07 input/expected pair are unverified.",
+        "The retry-gating correction is a cross-artifact protocol claim not covered by the bundled tests.",
+        "Whether the operator wants the minimal-diff `kind`-only fix or the fuller retry-gating correction to satisfy the protocol-conformance requirement."
+      ]
+    },
+    "B": {
+      "verdict": "incompatible",
+      "findings": [
+        {
+          "artifact": "src/adapters/northstar-job-event.ts:18",
+          "issue": "The `kind` mapping derives from `retryable` only and discards `event.result.outcome`, so non-retryable failures and cancellations are emitted as `\"succeeded\"`. This is test-covered and material (blocking).",
+          "evidence": [
+            "src/adapters/northstar-job-event.ts:18 `kind: retryable ? \"failed\" : \"succeeded\",`",
+            "test/northstar-job-event.test.ts \"preserves non-retryable failure\" expects kind \"failed\" for failed+retryable:false, but current code yields \"succeeded\"",
+            "test/northstar-job-event.test.ts \"preserves cancellation\" expects kind \"cancelled\", but current code yields \"succeeded\""
+          ],
+          "smallestCorrection": "In normalizeFinishedEvent change `kind: retryable ? \"failed\" : \"succeeded\"` to `kind: event.result.outcome` (type-checks under strict: the kind union equals NorthstarFinishedEvent result.outcome exactly)."
+        },
+        {
+          "artifact": "src/adapters/northstar-job-event.ts:19",
+          "issue": "The `retry` mapping yields \"eligible\" whenever `retryable:true`, including for a succeeded outcome, which contradicts the protocol rule that only a failed+retryable result is eligible and every other transition is \"none\". This is latent (not covered by bundled tests or case-07), so non-blocking but technically non-conformant.",
+          "evidence": [
+            "src/adapters/northstar-job-event.ts:19 `retry: retryable ? \"eligible\" : \"none\",`",
+            "Child-recorded protocol rule: only a failed result with retryable:true is \"eligible\"; every other transition is \"none\"",
+            "No bundled test and no case exercise succeeded+retryable:true"
+          ],
+          "smallestCorrection": "Change the retry line to `retry: event.result.outcome === \"failed\" && event.result.retryable === true ? \"eligible\" : \"none\"`; behavior-neutral for all four tests and for case-07."
+        },
+        {
+          "artifact": "conformance/northstar-job-events-v2/case-07.json",
+          "issue": "Per the child report, case-07's expected `kind` is \"succeeded\" for an input declaring failed/retryable:false; this embeds the current buggy adapter behavior and is inconsistent with a repaired adapter (should be \"failed\").",
+          "evidence": [
+            "Child report: case-07 input declares failed/retryable:false; expected kind \"succeeded\" is non-conforming; jobId, retry \"none\", and occurredAt conform"
+          ],
+          "smallestCorrection": "Set case-07 expected `kind` to \"failed\" so the case is a valid input/expected pair consistent with the repaired adapter (an ownership decision, not a source edit)."
+        }
+      ],
+      "preservedContracts": [
+        "Bundled protocol text (docs/northstar-job-events-v2.md) is unchanged",
+        "Public domain type src/domain/job-transition.ts (JobTransition) is unchanged",
+        "Bundled tests test/northstar-job-event.test.ts are unchanged",
+        "TASK.md acceptance criteria unchanged",
+        "No unrelated files or contracts change"
+      ],
+      "mechanicalEvidence": [
+        "Adapter vs all four bundled test expectations mechanically compared: two failures (failed+retryable:false → kind mismatch, cancelled → kind mismatch), two passes (succeeded, failed+retryable:true)",
+        "Type compatibility: `event.result.outcome` is assignable to `JobTransition[\"kind\"]` under strict (src/domain/job-transition.ts)",
+        "Retry outcome for case-07 (failed+retryable:false → \"none\") is correct in both current and corrected adapter",
+        "Workspace listing confirmed scope is exactly 7 files; docs/ and conformance/ are not present (ENOENT)"
+      ],
+      "semanticReviewNeeded": [
+        "Raw docs/northstar-job-events-v2.md (absent from workspace) — confirm protocol retry/outcome wording against child-report claims",
+        "Raw conformance/northstar-job-events-v2/case-07.json (absent from workspace) — confirm expected kind correction and validity",
+        "Whether the succeeded+retryable:true retry edge is intended/realistic given the source type"
+      ],
+      "withheldAuthority": "This is a bounded, read-only investigation: no execution (`bun test` was not run), no files were edited. Final pass/fail acceptance, ownership of the adapter and conformance-case edits, and any authoritative protocol-text ruling (including confirmation of the child-report claims about docs/ and conformance/case-07) remain with the acceptance authority and are not claimed here.",
+      "uncertainties": [
+        "docs/ and conformance/ files were not directly readable (ENOENT); their claims rest solely on the child report",
+        "The succeeded+retryable:true retry edge is unexercised by tests/case and its intent is unconfirmed"
+      ]
+    }
+  }
+}

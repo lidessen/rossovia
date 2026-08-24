@@ -1,0 +1,41 @@
+# fixture kb-representation-round1-v1
+# Directed knowledge graph. Each EDGE is FROM RELATION TO.
+# Nodes
+NODE	N01	项目
+NODE	N02	任务
+NODE	N03	Agent
+NODE	N04	知识库
+NODE	N05	索引
+NODE	N06	检索
+NODE	N07	证据
+NODE	N08	决策
+NODE	N09	提交
+NODE	N10	审查
+NODE	N11	主线
+NODE	N12	计划
+NODE	N13	验证
+NODE	N14	可视化
+NODE	N15	工作树
+# Edges
+EDGE	N01	contains	N02
+EDGE	N01	has_worktree	N15
+EDGE	N15	hosts	N02
+EDGE	N12	orders	N02
+EDGE	N02	assigned_to	N03
+EDGE	N03	reads	N04
+EDGE	N04	indexed_by	N05
+EDGE	N05	enables	N06
+EDGE	N06	returns	N07
+EDGE	N13	checks	N09
+EDGE	N13	emits	N07
+EDGE	N07	supports	N08
+EDGE	N14	visualizes	N04
+EDGE	N14	visualizes	N07
+EDGE	N14	supports	N08
+EDGE	N08	prioritizes	N02
+EDGE	N02	produces	N09
+EDGE	N09	reviewed_by	N10
+EDGE	N10	gates	N11
+EDGE	N08	approves	N09
+EDGE	N03	updates	N02
+EDGE	N15	isolates	N09

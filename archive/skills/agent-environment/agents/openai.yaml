@@ -1,0 +1,4 @@
+interface:
+  display_name: "Agent Environment"
+  short_description: "Set up and migrate personal coding-agent environments"
+  default_prompt: "Use $agent-environment to set up this device from my portable agent environment and verify each tool."

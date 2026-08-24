@@ -1,0 +1,20 @@
+{
+  "validity_judgment": "Strong evidence supports allocating these two specification-analysis tasks to Candidate B under a 300-second budget. It does not support a broad claim that B is universally more capable, nor a defensible quality advantage for A.",
+  "supported_observations_or_claims": [
+    "B passed all four runs in about 10–11.5 seconds, while A required roughly 149–295 seconds for its three passes and exceeded the boundary once.",
+    "All seven settled outputs matched the worker-visible acceptance statements, so the observed result quality was equivalent under that acceptance measure.",
+    "B therefore showed substantially better latency, completion reliability, and budget margin on these cases.",
+    "The cancelled A run reached structured settlement only after its main model step, indicating that A's completion architecture created material deadline risk even when substantive reasoning had finished.",
+    "The blind-judge preference for A is not supported by its stated rationale: the retained B output explicitly said `independent, non-substitutable` and supplied the same complete paths.",
+    "Because a contrast-focused re-prompt repeated the same factually contradicted preference, the judge appears insensitive to the relevant evidence or biased toward A's presentation style."
+  ],
+  "unsupported_claims": [
+    "That A produced substantively more correct answers.",
+    "That B failed to reject substitution or omitted concrete paths.",
+    "That thinking-enabled private settlement is generally inferior to inline JSON.",
+    "That B is superior across other task types, providers, prompts, schedules, or output contracts.",
+    "That the performance difference is caused specifically by model capability rather than routing, thinking configuration, settlement overhead, or their interaction.",
+    "That either candidate robustly understands the concepts beyond the worker-visible acceptance statements, since those statements may have directly cued the required content."
+  ],
+  "smallest_next_evaluation": "Run one additional blinded, counterbalanced completion-contract comparison with the acceptance array withheld from the candidates, a strict machine check for the disputed substitution statement and exact paths, and the same 300-second boundary. Score semantic correctness and deadline completion separately. This directly tests whether B preserves its quality and latency advantage without acceptance-language leakage and whether the judge's preference survives objective verification."
+}

@@ -1,0 +1,4 @@
+interface:
+  display_name: "Document Writing"
+  short_description: "Write truthful documents for real readers"
+  default_prompt: "Use $document-writing to rewrite this README for its actual readers without changing the facts."

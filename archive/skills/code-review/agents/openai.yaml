@@ -1,0 +1,4 @@
+interface:
+  display_name: "Code Review"
+  short_description: "Review code changes through evidence and impact"
+  default_prompt: "Use $code-review to inspect this proposed change for source-backed, decision-changing defects before acceptance."

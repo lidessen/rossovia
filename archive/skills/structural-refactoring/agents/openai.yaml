@@ -1,0 +1,4 @@
+interface:
+  display_name: "Structural Refactoring"
+  short_description: "Restructure code while preserving observable behavior"
+  default_prompt: "Use $structural-refactoring to plan and execute this code refactor without behavior drift."

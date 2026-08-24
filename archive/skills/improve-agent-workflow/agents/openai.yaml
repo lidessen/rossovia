@@ -1,0 +1,4 @@
+interface:
+  display_name: "Improve Agent Workflow"
+  short_description: "Improve how coding agents work in a project"
+  default_prompt: "Use $improve-agent-workflow to diagnose and make the smallest verified improvement to this project’s agent workflow."

@@ -1,0 +1,37 @@
+[
+  {
+    "id": "local-1",
+    "family": "local",
+    "prompt": "N04 通过 indexed_by 直接指向哪个节点？"
+  },
+  {
+    "id": "local-2",
+    "family": "local",
+    "prompt": "N13 到 N09 的直接关系名称是什么？"
+  },
+  {
+    "id": "multihop-1",
+    "family": "multihop",
+    "prompt": "沿有向边从 N04 到 N08 的最短节点路径是什么？用 > 连接节点 ID。"
+  },
+  {
+    "id": "multihop-2",
+    "family": "multihop",
+    "prompt": "沿有向边从 N02 到 N11 的最短节点路径是什么？用 > 连接节点 ID。"
+  },
+  {
+    "id": "global-1",
+    "family": "global",
+    "prompt": "忽略边方向，哪个节点的总度数最高？若并列按 ID 最小者回答。"
+  },
+  {
+    "id": "global-2",
+    "family": "global",
+    "prompt": "哪些节点的入度为 0？按 ID 升序，用逗号连接。"
+  },
+  {
+    "id": "global-3",
+    "family": "global",
+    "prompt": "不允许移除起点 N04 或终点 N08；分别单独移除哪些节点会阻断所有从 N04 到 N08 的有向路径？按 ID 升序，用逗号连接。"
+  }
+]

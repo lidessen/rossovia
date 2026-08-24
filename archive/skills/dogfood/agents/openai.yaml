@@ -1,0 +1,4 @@
+interface:
+  display_name: "Rossovia Dogfood"
+  short_description: "Use local Rossovia as the preferred development producer."
+  default_prompt: "Use $rossovia-development and enter its local dogfood mode when Rossovia is available and enabled."

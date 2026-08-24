@@ -1,0 +1,4 @@
+interface:
+  display_name: "Rossovia Development"
+  short_description: "Develop Rossovia or a named project through dogfood or bounded delegation."
+  default_prompt: "Use $rossovia-development to choose local Rossovia dogfood when available, otherwise delegate bounded design, implementation, and verification with one write owner."

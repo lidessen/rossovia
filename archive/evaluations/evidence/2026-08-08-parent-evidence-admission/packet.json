@@ -1,0 +1,49 @@
+{
+  "version": "parent-evidence-admission.packet.v1",
+  "status": "prepared-not-executed",
+  "sourceFixture": "../2026-08-06-todo-return-trigger/fixture",
+  "sourceEvidence": "../2026-08-07-host-constructed-nested-topology",
+  "runtime": {
+    "workCellSourceTreeSha256": "0925d6883d4d5207b4b5548dc45511089e008eaf9a787d95ec811c3e4b4605bb"
+  },
+  "files": {
+    "run-parent-treatment.ts": "508d4b07a78ab4314d3138e0db377157a963a4ea9914c4c51d6397e3754b3bf7",
+    "fixture.sha256": "b20fa4ab2bb03d1439a4db75ba26b868a83aa14ae8f0f6025eaadf7e82b726bb",
+    "evaluator-only/review.md": "84f848dfac2dfdb7884dbae6413639211df60f88e02ea290d2e41e54397c3317"
+  },
+  "sourceFiles": {
+    "packet.json": "9148029ebc2a4bd792b804505482a98c272f9e8b47f169c66ce8d348d50dd919",
+    "development-02/summary.json": "2fa19760eceeb8959da79c8ad810f7c97e8ac14c4604d67d3b40366a15d45f76",
+    "development-02/direct-record.json": "89e967759b6f4611c5b39479cf181626eb4621fd5d2e262b0867693e63280ecf",
+    "development-02/nested-child-record.json": "f15e6bbae76259f553db6edfec99f71487939879916f628eb0914bb48641b460",
+    "development-02/nested-parent-record.json": "a6b79a1eb770348efebf1377e14cd57e3f22220e281faeb9af662ee181920480",
+    "LABEL-MASKED-REVIEW.md": "3d7f09e949888a3f44f3684cfbdd37ac15dfb8820a63f5df1a58850e65273809"
+  },
+  "childOutputSha256": "9e89f064adb44d9a31f07942ec0d9f0ec51b1083a8ae946d9dc165703cf01972",
+  "model": {
+    "provider": "deepseek",
+    "id": "deepseek-v4-flash",
+    "credentialEnv": "DEEPSEEK_API_KEY",
+    "inferencePolicy": {
+      "thinking": "enabled",
+      "reasoningEffort": "low"
+    }
+  },
+  "parentFiles": [
+    "TASK.md",
+    "package.json",
+    "src/adapters/northstar-job-event.ts",
+    "src/domain/job-transition.ts",
+    "test/northstar-job-event.test.ts",
+    "todo.md",
+    "tsconfig.json"
+  ],
+  "treatmentInstruction": "The supplied child report is a schema-valid retained source report from a bounded Cell that read exactly the named frozen protocol and case files. Treat its exact source claims as admissible bounded evidence for integration, while retaining uncertainty and final judgment yourself. You may rely on exact claims present in the report without pretending the raw child files are parent-visible. Do not treat the child conclusion as semantic verification, durable acceptance, or authority.",
+  "budget": {
+    "maxSteps": 8,
+    "estimatedTokens": 4000,
+    "estimatedTokensTolerance": 1,
+    "maxDurationMs": 120000,
+    "maxCommandOutputBytes": 8000
+  }
+}

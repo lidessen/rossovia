@@ -1,0 +1,23 @@
+{
+  "version": "prompt-composition-baseline-run-records.v1",
+  "frozenContractManifestSha256": "dd6e767b088f6ca171722dfb71793276f1632c6e720f2296d0d1851e60592fbe",
+  "runArtifactsManifestSha256": "c761da10eb51896b79c4a321632b00df5b6973d12d852e1fe665685bdd877a93",
+  "clientVersion": "codex-cli 0.146.0",
+  "requestedModel": "gpt-5.6-sol",
+  "reasoningEffort": "low",
+  "timeEvidence": "JSONL creation birth time and final-output modification time, UTC; the CLI JSONL exposes no timestamps",
+  "runs": [
+    {"id":"r2b-01","threadId":"019fcc2f-4ea5-7a80-98ca-2e92f5433f9a","startedAt":"2026-08-04T02:51:20Z","completedAt":"2026-08-04T02:51:32Z","exitCode":0,"stderrBytes":0,"inputTokens":14357,"outputTokens":243},
+    {"id":"r2b-02","threadId":"019fcc2f-db91-7153-a30d-846dbac8514c","startedAt":"2026-08-04T02:51:56Z","completedAt":"2026-08-04T02:52:18Z","exitCode":0,"stderrBytes":0,"inputTokens":14207,"outputTokens":554},
+    {"id":"r2b-03","threadId":"019fcc30-45b6-72d0-8a89-f23d3850bc47","startedAt":"2026-08-04T02:52:23Z","completedAt":"2026-08-04T02:52:35Z","exitCode":0,"stderrBytes":0,"inputTokens":14264,"outputTokens":204},
+    {"id":"r2b-04","threadId":"019fcc30-861b-71b3-8bd4-598fcecaaf45","startedAt":"2026-08-04T02:52:39Z","completedAt":"2026-08-04T02:53:10Z","exitCode":0,"stderrBytes":0,"inputTokens":14338,"outputTokens":1077},
+    {"id":"r2b-05","threadId":"019fcc31-711b-74c0-b0a1-53ee651c71b0","startedAt":"2026-08-04T02:53:39Z","completedAt":"2026-08-04T02:54:03Z","exitCode":0,"stderrBytes":0,"inputTokens":14207,"outputTokens":610},
+    {"id":"r2b-06","threadId":"019fcc31-de8d-7af3-9b2b-815e98630989","startedAt":"2026-08-04T02:54:08Z","completedAt":"2026-08-04T02:54:22Z","exitCode":0,"stderrBytes":0,"inputTokens":14357,"outputTokens":227},
+    {"id":"r2b-07","threadId":"019fcc32-4a44-7e10-80ef-362997305379","startedAt":"2026-08-04T02:54:35Z","completedAt":"2026-08-04T02:54:47Z","exitCode":0,"stderrBytes":0,"inputTokens":14264,"outputTokens":205},
+    {"id":"r2b-08","threadId":"019fcc32-90c6-7591-9811-9b49dbea415c","startedAt":"2026-08-04T02:54:53Z","completedAt":"2026-08-04T02:55:24Z","exitCode":0,"stderrBytes":0,"inputTokens":14338,"outputTokens":890},
+    {"id":"r2b-09","threadId":"019fcc33-6b0f-7de0-a050-83d7a42d41db","startedAt":"2026-08-04T02:55:49Z","completedAt":"2026-08-04T02:56:01Z","exitCode":0,"stderrBytes":0,"inputTokens":14357,"outputTokens":247},
+    {"id":"r2b-10","threadId":"019fcc33-ab2d-7003-bc5e-180a63ac7a47","startedAt":"2026-08-04T02:56:06Z","completedAt":"2026-08-04T02:56:26Z","exitCode":0,"stderrBytes":0,"inputTokens":14207,"outputTokens":579},
+    {"id":"r2b-11","threadId":"019fcc34-59c4-7632-9de7-6d5475973b88","startedAt":"2026-08-04T02:56:50Z","completedAt":"2026-08-04T02:57:19Z","exitCode":0,"stderrBytes":0,"inputTokens":14338,"outputTokens":959},
+    {"id":"r2b-12","threadId":"019fcc34-e17c-7262-ade0-6032f3d0666e","startedAt":"2026-08-04T02:57:25Z","completedAt":"2026-08-04T02:57:38Z","exitCode":0,"stderrBytes":0,"inputTokens":14264,"outputTokens":209}
+  ]
+}

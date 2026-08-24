@@ -1,0 +1,6 @@
+63723d4ba998e3f869c72c9a49caafcb1b81232203418c8760e3e298f9a2642b  evaluations/evidence/2026-08-04-prompt-composition-round2/README.md
+d9a98b69d7715c13f11007b16f927dc7a371e1eb1a4288d03c55b2e014515253  evaluations/evidence/2026-08-04-prompt-composition-round2/baseline-order.json
+07d52ae21376c11b6c960f84a2cdbc2c47d3fb8df9ee337490983ace74b77a65  evaluations/evidence/2026-08-04-prompt-composition-round2/packets/t1-model-validity.en.txt
+6b8f56c7934d2ed7619266a069598fdaeeac6f894a4d88fa02a251cf9d39cb7d  evaluations/evidence/2026-08-04-prompt-composition-round2/packets/t1-model-validity.zh.txt
+4d14ae9cfe0c704b11ae040b2fe48858c39b354a99120fbe6e3f3905c82c5587  evaluations/evidence/2026-08-04-prompt-composition-round2/packets/t2-clinic-notice.en.txt
+12c9d936306badf3ad77d142867f7280a9012124ba0e29eeed77823c52191758  evaluations/evidence/2026-08-04-prompt-composition-round2/packets/t2-clinic-notice.zh.txt

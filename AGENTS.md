@@ -10,10 +10,12 @@ This is the incubation living tree. Do not treat `archive/v0.5` or `main` as thi
 - Long direction: `planning/roadmap.md`
 - Pre-implementation plan: `planning/plan.md`
 
+`archive/` is a v0.5 document dump. It is not current design. Move files out of it into the living path, then edit.
+
 ## Names
 
-Do not call the source Sequence, 原则源, or `principles/SEQUENCE.md`. That path exists only on `archive/v0.5`.
+Do not call the source Sequence, 原则源, or `principles/SEQUENCE.md`. That path exists only on `archive/v0.5` and as a historical copy that has already left `archive/`.
 
-## Not in this tree yet
+## Not living yet
 
-Harness theory, design files, portable `skills/`, and `.agents/skills/` are still on the freeze branch until `planning/plan.md` says they have moved. Do not implement the harness base on this branch.
+Harness theory, design files, and skills still sit under `archive/`. Do not implement the harness base on this branch.

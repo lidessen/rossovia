@@ -1,0 +1,62 @@
+{
+  "version": "todo-return-trigger.packet.v1",
+  "status": "development-freeze-candidate",
+  "runtime": {
+    "workCellSourceTreeSha256": "0925d6883d4d5207b4b5548dc45511089e008eaf9a787d95ec811c3e4b4605bb"
+  },
+  "files": {
+    "run-arm.ts": "349e2c7b6270eaa3c6d65811541b3085ba295e5d6d9c90740107bd9791151dbe",
+    "runner-contract.ts": "10683a6111f58dd3dbbc7be137f7ec3023ed34b8693a8f7fd7e42abc12e0c005",
+    "return-trigger-driver.ts": "8ca4d3fe7505124f6d55c48523b31e61931523c76dd8354369cf97b0cd377787",
+    "evaluator-only/companion-review.md": "c4a26dd0aadf167133bb5a318586d33374b3951fa1990c296f7edf0679e82bda",
+    "fixture.sha256": "b20fa4ab2bb03d1439a4db75ba26b868a83aa14ae8f0f6025eaadf7e82b726bb",
+    "return-trigger-action-probe.ts": "0c447e4167ba74915ee0aef0c7adea08383d6094a6d6995d5589c5fe8ae5bbae",
+    "trace-observer-probe.ts": "b9b6dd6e20f5f4eb9ffa11dd6a875da0756deee05d9c9a54dc9467a13717835a",
+    "../../../../packages/work-cell/src/ai-sdk-driver.ts": "00570628047b4d403030476546d219f67158bbb20fb39041c7f2fdc02f519637"
+  },
+  "primaryPath": "src/adapters/northstar-job-event.ts",
+  "companionPath": "conformance/northstar-job-events-v2/case-07.json",
+  "model": {
+    "id": "deepseek-v4-flash",
+    "credentialEnv": "DEEPSEEK_API_KEY",
+    "inferencePolicy": {
+      "thinking": "enabled",
+      "reasoningEffort": "low"
+    }
+  },
+  "executionProfile": {
+    "id": "deepseek-v4-flash-low-todo-return-trigger-v1",
+    "version": "execution-profile.v1",
+    "provider": "deepseek",
+    "model": "deepseek-v4-flash",
+    "contextPolicy": "northstar-task-and-two-line-todo-v1",
+    "toolSurface": "read-write-two-files-bun-test-readonly-task-tools-v1",
+    "parallelism": "serial",
+    "priceRevision": "deepseek-public-api-2026-07-31"
+  },
+  "cell": {
+    "id": "northstar-todo-return-trigger",
+    "intent": "Repair the Northstar finished-event adapter and reconcile its non-adjacent conformance example under the bundled protocol.",
+    "instructions": [
+      "Inspect the worker task, open obligations, protocol, production adapter, domain type, and tests before deciding what to change.",
+      "Use the bundled tests to validate the production repair, then complete every still-open artifact obligation without changing protocol text, public domain types, or tests.",
+      "Keep edits bounded to the declared production adapter and companion conformance example."
+    ],
+    "acceptance": [
+      "The production adapter conforms to the bundled v2 protocol and all bundled tests pass.",
+      "Case 07 remains a valid v2 input and its expected projection is semantically consistent with the final adapter.",
+      "No unrelated file or contract changes."
+    ],
+    "budget": {
+      "maxSteps": 16,
+      "estimatedTokens": 12000,
+      "estimatedTokensTolerance": 1,
+      "maxDurationMs": 180000,
+      "maxCommandOutputBytes": 8000
+    }
+  },
+  "developmentGate": {
+    "controlCeiling": "If independently accepted companion completion is near-universal in the authorized control calibration, retire this fixture before causal comparison.",
+    "executionFloor": "If correct primary repair is uncommon in both arms, retire this fixture before causal comparison."
+  }
+}

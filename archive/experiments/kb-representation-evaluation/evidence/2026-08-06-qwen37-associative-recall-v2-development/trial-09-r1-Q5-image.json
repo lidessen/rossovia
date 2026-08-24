@@ -1,0 +1,307 @@
+{
+  "trial": 9,
+  "repetition": 1,
+  "caseSet": "development",
+  "question": {
+    "id": "Q5",
+    "prompt": "Before an optional model proposes a digest, what context can it receive, and which part of the system still owns the decision to mutate durable knowledge?"
+  },
+  "condition": "image",
+  "route": {
+    "candidates": [
+      "SHILU-S04",
+      "SHILU-S11",
+      "SHILU-S01",
+      "SHILU-S02"
+    ]
+  },
+  "answer": {
+    "claims": [
+      {
+        "claimId": "Q5-C1",
+        "valueKey": "source-rawcontent-collection-relatedentries",
+        "citations": [
+          {
+            "sourceId": "SHILU-S11",
+            "anchorId": "an_5f10"
+          }
+        ]
+      },
+      {
+        "claimId": "Q5-C2",
+        "valueKey": "core-validates-and-commits",
+        "citations": [
+          {
+            "sourceId": "SHILU-S04",
+            "anchorId": "an_824e"
+          },
+          {
+            "sourceId": "SHILU-S01",
+            "anchorId": "an_51c0"
+          }
+        ]
+      }
+    ]
+  },
+  "score": {
+    "retrievalRelevantSourceIds": [
+      "SHILU-S04",
+      "SHILU-S11"
+    ],
+    "candidates": [
+      "SHILU-S04",
+      "SHILU-S11",
+      "SHILU-S01",
+      "SHILU-S02"
+    ],
+    "hitAt1": true,
+    "hitAt3": true,
+    "hitAt5": true,
+    "recallAt1": 0.5,
+    "recallAt3": 1,
+    "recallAt5": 1,
+    "allRelevantHitAt3": true,
+    "allRelevantHitAt5": true,
+    "reciprocalRank": 1,
+    "openedSources": 4,
+    "answerAccuracy": 1,
+    "claimCount": 2,
+    "correctAnswerCount": 2,
+    "citationPrecision": 1,
+    "citationCoverage": 1,
+    "submittedCitationCount": 3,
+    "correctCitationCount": 3,
+    "requiredEvidenceGroupCount": 2,
+    "coveredEvidenceGroupCount": 2,
+    "protocolValid": true,
+    "groundedSuccess": true,
+    "claimResults": [
+      {
+        "claimId": "Q5-C1",
+        "expectedKey": "source-rawcontent-collection-relatedentries",
+        "actualKey": "source-rawcontent-collection-relatedentries",
+        "answerCorrect": true,
+        "citations": [
+          {
+            "sourceId": "SHILU-S11",
+            "anchorId": "an_5f10",
+            "locatable": true,
+            "opened": true,
+            "allowed": true,
+            "correct": true
+          }
+        ],
+        "evidenceGroups": [
+          {
+            "groupId": "Q5-C1-G1",
+            "covered": true
+          }
+        ],
+        "fullyGrounded": true
+      },
+      {
+        "claimId": "Q5-C2",
+        "expectedKey": "core-validates-and-commits",
+        "actualKey": "core-validates-and-commits",
+        "answerCorrect": true,
+        "citations": [
+          {
+            "sourceId": "SHILU-S04",
+            "anchorId": "an_824e",
+            "locatable": true,
+            "opened": true,
+            "allowed": true,
+            "correct": true
+          },
+          {
+            "sourceId": "SHILU-S01",
+            "anchorId": "an_51c0",
+            "locatable": true,
+            "opened": true,
+            "allowed": true,
+            "correct": true
+          }
+        ],
+        "evidenceGroups": [
+          {
+            "groupId": "Q5-C2-G1",
+            "covered": true
+          }
+        ],
+        "fullyGrounded": true
+      }
+    ]
+  },
+  "routeParseError": null,
+  "answerParseError": null,
+  "activation": {
+    "path": "inputs/activation-Q5.png",
+    "sha256": "sha256:32217e8af5f490752a86acdd9b23c0161f07da539c0c16fe752abea7c7014f36",
+    "bytes": 158172
+  },
+  "sourcePacket": {
+    "path": "inputs/09-r1-Q5-image-sources.md",
+    "sha256": "sha256:a036edb491ad99ee25d61fe39265e4d87ff2820f6647a90d562e3fbb3cde9710",
+    "bytes": 4011
+  },
+  "routeRun": {
+    "startedAt": "2026-08-06T11:40:25.881Z",
+    "finishedAt": "2026-08-06T11:40:46.019Z",
+    "durationMs": 20138,
+    "exitCode": 0,
+    "executionError": null,
+    "answerText": "```json\n{\"candidates\":[\"SHILU-S04\",\"SHILU-S11\",\"SHILU-S01\",\"SHILU-S02\"]}\n```",
+    "usage": {
+      "tokens": {
+        "total": 25580,
+        "input": 6,
+        "output": 807,
+        "reasoning": 0,
+        "cache": {
+          "write": 24767,
+          "read": 0
+        }
+      },
+      "cost": 0.0136771,
+      "reason": "stop"
+    },
+    "stderr": null,
+    "eventParseError": null,
+    "toolProtocolError": null,
+    "rawEvents": [
+      {
+        "type": "step_start",
+        "timestamp": 1786016432169,
+        "sessionID": "ses_029201688ffeMpJqoymHCtYkxQ",
+        "part": {
+          "id": "prt_fd6e00022001Ki0wkoqwrq8Uml",
+          "messageID": "msg_fd6dfea29001YMvEO4sSZ5isWN",
+          "sessionID": "ses_029201688ffeMpJqoymHCtYkxQ",
+          "snapshot": "eb30838c5ced31ae6644f4cefd36be1bc64dcfb9",
+          "type": "step-start"
+        }
+      },
+      {
+        "type": "text",
+        "timestamp": 1786016445880,
+        "sessionID": "ses_029201688ffeMpJqoymHCtYkxQ",
+        "part": {
+          "id": "prt_fd6e0339b001kMelJ7jb3nL4ts",
+          "messageID": "msg_fd6dfea29001YMvEO4sSZ5isWN",
+          "sessionID": "ses_029201688ffeMpJqoymHCtYkxQ",
+          "type": "text",
+          "text": "```json\n{\"candidates\":[\"SHILU-S04\",\"SHILU-S11\",\"SHILU-S01\",\"SHILU-S02\"]}\n```",
+          "time": {
+            "start": 1786016445339,
+            "end": 1786016445876
+          }
+        }
+      },
+      {
+        "type": "step_finish",
+        "timestamp": 1786016445976,
+        "sessionID": "ses_029201688ffeMpJqoymHCtYkxQ",
+        "part": {
+          "id": "prt_fd6e03615001qF5wRYgkoybZ8l",
+          "reason": "stop",
+          "snapshot": "eb30838c5ced31ae6644f4cefd36be1bc64dcfb9",
+          "messageID": "msg_fd6dfea29001YMvEO4sSZ5isWN",
+          "sessionID": "ses_029201688ffeMpJqoymHCtYkxQ",
+          "type": "step-finish",
+          "tokens": {
+            "total": 25580,
+            "input": 6,
+            "output": 807,
+            "reasoning": 0,
+            "cache": {
+              "write": 24767,
+              "read": 0
+            }
+          },
+          "cost": 0.0136771
+        }
+      }
+    ],
+    "rawStdout": null
+  },
+  "answerRun": {
+    "startedAt": "2026-08-06T11:40:46.020Z",
+    "finishedAt": "2026-08-06T11:40:59.125Z",
+    "durationMs": 13106,
+    "exitCode": 0,
+    "executionError": null,
+    "answerText": "{\"claims\":[{\"claimId\":\"Q5-C1\",\"valueKey\":\"source-rawcontent-collection-relatedentries\",\"citations\":[{\"sourceId\":\"SHILU-S11\",\"anchorId\":\"an_5f10\"}]},{\"claimId\":\"Q5-C2\",\"valueKey\":\"core-validates-and-commits\",\"citations\":[{\"sourceId\":\"SHILU-S04\",\"anchorId\":\"an_824e\"},{\"sourceId\":\"SHILU-S01\",\"anchorId\":\"an_51c0\"}]}]}",
+    "usage": {
+      "tokens": {
+        "total": 25296,
+        "input": 6,
+        "output": 493,
+        "reasoning": 0,
+        "cache": {
+          "write": 24797,
+          "read": 0
+        }
+      },
+      "cost": 0.0131897,
+      "reason": "stop"
+    },
+    "stderr": null,
+    "eventParseError": null,
+    "toolProtocolError": null,
+    "rawEvents": [
+      {
+        "type": "step_start",
+        "timestamp": 1786016450625,
+        "sessionID": "ses_0291fc7e1ffeI6p230A5jdvvC2",
+        "part": {
+          "id": "prt_fd6e0483b0014UaVpiFLg6lO8o",
+          "messageID": "msg_fd6e038c1001zcKy7aSIYZtl3X",
+          "sessionID": "ses_0291fc7e1ffeI6p230A5jdvvC2",
+          "snapshot": "ee5e15ec1a4c7e4eb1c3da12f04953cd1963b047",
+          "type": "step-start"
+        }
+      },
+      {
+        "type": "text",
+        "timestamp": 1786016458996,
+        "sessionID": "ses_0291fc7e1ffeI6p230A5jdvvC2",
+        "part": {
+          "id": "prt_fd6e0622f00103F6Ci98PPY6aY",
+          "messageID": "msg_fd6e038c1001zcKy7aSIYZtl3X",
+          "sessionID": "ses_0291fc7e1ffeI6p230A5jdvvC2",
+          "type": "text",
+          "text": "{\"claims\":[{\"claimId\":\"Q5-C1\",\"valueKey\":\"source-rawcontent-collection-relatedentries\",\"citations\":[{\"sourceId\":\"SHILU-S11\",\"anchorId\":\"an_5f10\"}]},{\"claimId\":\"Q5-C2\",\"valueKey\":\"core-validates-and-commits\",\"citations\":[{\"sourceId\":\"SHILU-S04\",\"anchorId\":\"an_824e\"},{\"sourceId\":\"SHILU-S01\",\"anchorId\":\"an_51c0\"}]}]}",
+          "time": {
+            "start": 1786016457263,
+            "end": 1786016458993
+          }
+        }
+      },
+      {
+        "type": "step_finish",
+        "timestamp": 1786016459082,
+        "sessionID": "ses_0291fc7e1ffeI6p230A5jdvvC2",
+        "part": {
+          "id": "prt_fd6e069480011TVfWfWXJ18z2c",
+          "reason": "stop",
+          "snapshot": "ee5e15ec1a4c7e4eb1c3da12f04953cd1963b047",
+          "messageID": "msg_fd6e038c1001zcKy7aSIYZtl3X",
+          "sessionID": "ses_0291fc7e1ffeI6p230A5jdvvC2",
+          "type": "step-finish",
+          "tokens": {
+            "total": 25296,
+            "input": 6,
+            "output": 493,
+            "reasoning": 0,
+            "cache": {
+              "write": 24797,
+              "read": 0
+            }
+          },
+          "cost": 0.0131897
+        }
+      }
+    ],
+    "rawStdout": null
+  }
+}

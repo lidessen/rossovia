@@ -1,0 +1,51 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="960" viewBox="0 0 1400 960">
+<defs><marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z"/></marker></defs>
+<style>
+  svg { background: #fbfaf7; }
+  .edge line { stroke: #66706a; stroke-width: 2.2; }
+  .edge text { font: 13px ui-monospace, SFMono-Regular, Menlo, monospace; text-anchor: middle; fill: #27332d; stroke: #fbfaf7; stroke-width: 5px; paint-order: stroke; }
+  .node rect { fill: #eef5ef; stroke: #315f4d; stroke-width: 2; }
+  .node text { text-anchor: middle; fill: #173b2d; font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif; }
+  .node .id { font-size: 15px; font-weight: 700; }
+  .node .label { font-size: 16px; }
+</style>
+<rect width="1400" height="960" fill="#fbfaf7"/>
+<text x="52" y="52" font-family="-apple-system, BlinkMacSystemFont, PingFang SC, sans-serif" font-size="24" font-weight="700" fill="#173b2d">image-edge-medium-v1 · directed typed graph</text>
+<g class="edge"><line x1="177.00" y1="640.00" x2="520.00" y2="640.00" marker-end="url(#arrow)"/><text x="350" y="628">contains</text></g>
+<g class="edge"><line x1="177.00" y1="640.00" x2="280.00" y2="640.00" marker-end="url(#arrow)"/><text x="230" y="628">has_worktree</text></g>
+<g class="edge"><line x1="417.00" y1="640.00" x2="520.00" y2="640.00" marker-end="url(#arrow)"/><text x="470" y="656">hosts</text></g>
+<g class="edge"><line x1="386.00" y1="810.00" x2="550.40" y2="673.00" marker-end="url(#arrow)"/><text x="470" y="750">orders</text></g>
+<g class="edge"><line x1="590.00" y1="610.00" x2="590.00" y2="503.00" marker-end="url(#arrow)"/><text x="642" y="555">assigned_to</text></g>
+<g class="edge"><line x1="523.00" y1="444.88" x2="180.00" y2="316.25" marker-end="url(#arrow)"/><text x="350" y="368">reads</text></g>
+<g class="edge"><line x1="177.00" y1="290.00" x2="280.00" y2="290.00" marker-end="url(#arrow)"/><text x="230" y="278">indexed_by</text></g>
+<g class="edge"><line x1="417.00" y1="290.00" x2="520.00" y2="290.00" marker-end="url(#arrow)"/><text x="470" y="278">enables</text></g>
+<g class="edge"><line x1="657.00" y1="290.00" x2="760.00" y2="290.00" marker-end="url(#arrow)"/><text x="710" y="278">returns</text></g>
+<g class="edge"><line x1="830.00" y1="810.00" x2="830.00" y2="673.00" marker-end="url(#arrow)"/><text x="876" y="740">checks</text></g>
+<g class="edge"><line x1="830.00" y1="810.00" x2="830.00" y2="323.00" marker-end="url(#arrow)"/><text x="782" y="565">emits</text></g>
+<g class="edge"><line x1="897.00" y1="290.00" x2="1000.00" y2="290.00" marker-end="url(#arrow)"/><text x="950" y="278">supports</text></g>
+<g class="edge"><line x1="416.00" y1="120.00" x2="169.40" y2="257.00" marker-end="url(#arrow)"/><text x="248" y="190">visualizes</text></g>
+<g class="edge"><line x1="524.00" y1="120.00" x2="770.60" y2="257.00" marker-end="url(#arrow)"/><text x="692" y="190">visualizes</text></g>
+<g class="edge"><line x1="537.00" y1="112.33" x2="1000.00" y2="266.67" marker-end="url(#arrow)"/><text x="770" y="172">supports</text></g>
+<g class="edge"><line x1="1028.86" y1="320.00" x2="635.26" y2="607.00" marker-end="url(#arrow)"/><text x="830" y="449">prioritizes</text></g>
+<g class="edge"><line x1="657.00" y1="640.00" x2="760.00" y2="640.00" marker-end="url(#arrow)"/><text x="710" y="628">produces</text></g>
+<g class="edge"><line x1="897.00" y1="640.00" x2="1000.00" y2="640.00" marker-end="url(#arrow)"/><text x="950" y="628">reviewed_by</text></g>
+<g class="edge"><line x1="1137.00" y1="640.00" x2="1240.00" y2="640.00" marker-end="url(#arrow)"/><text x="1190" y="628">gates</text></g>
+<g class="edge"><line x1="1049.43" y1="320.00" x2="852.63" y2="607.00" marker-end="url(#arrow)"/><text x="1002" y="465">approves</text></g>
+<g class="edge"><line x1="590.00" y1="500.00" x2="590.00" y2="607.00" marker-end="url(#arrow)"/><text x="538" y="555">updates</text></g>
+<g class="edge"><line x1="417.00" y1="640.00" x2="760.00" y2="640.00" marker-end="url(#arrow)"/><text x="590" y="658">isolates</text></g>
+<g class="node" transform="translate(45 612)"><rect width="130" height="56" rx="14"/><text x="65" y="23" class="id">N01</text><text x="65" y="44" class="label">项目</text></g>
+<g class="node" transform="translate(525 612)"><rect width="130" height="56" rx="14"/><text x="65" y="23" class="id">N02</text><text x="65" y="44" class="label">任务</text></g>
+<g class="node" transform="translate(525 442)"><rect width="130" height="56" rx="14"/><text x="65" y="23" class="id">N03</text><text x="65" y="44" class="label">Agent</text></g>
+<g class="node" transform="translate(45 262)"><rect width="130" height="56" rx="14"/><text x="65" y="23" class="id">N04</text><text x="65" y="44" class="label">知识库</text></g>
+<g class="node" transform="translate(285 262)"><rect width="130" height="56" rx="14"/><text x="65" y="23" class="id">N05</text><text x="65" y="44" class="label">索引</text></g>
+<g class="node" transform="translate(525 262)"><rect width="130" height="56" rx="14"/><text x="65" y="23" class="id">N06</text><text x="65" y="44" class="label">检索</text></g>
+<g class="node" transform="translate(765 262)"><rect width="130" height="56" rx="14"/><text x="65" y="23" class="id">N07</text><text x="65" y="44" class="label">证据</text></g>
+<g class="node" transform="translate(1005 262)"><rect width="130" height="56" rx="14"/><text x="65" y="23" class="id">N08</text><text x="65" y="44" class="label">决策</text></g>
+<g class="node" transform="translate(765 612)"><rect width="130" height="56" rx="14"/><text x="65" y="23" class="id">N09</text><text x="65" y="44" class="label">提交</text></g>
+<g class="node" transform="translate(1005 612)"><rect width="130" height="56" rx="14"/><text x="65" y="23" class="id">N10</text><text x="65" y="44" class="label">审查</text></g>
+<g class="node" transform="translate(1245 612)"><rect width="130" height="56" rx="14"/><text x="65" y="23" class="id">N11</text><text x="65" y="44" class="label">主线</text></g>
+<g class="node" transform="translate(285 812)"><rect width="130" height="56" rx="14"/><text x="65" y="23" class="id">N12</text><text x="65" y="44" class="label">计划</text></g>
+<g class="node" transform="translate(765 812)"><rect width="130" height="56" rx="14"/><text x="65" y="23" class="id">N13</text><text x="65" y="44" class="label">验证</text></g>
+<g class="node" transform="translate(405 62)"><rect width="130" height="56" rx="14"/><text x="65" y="23" class="id">N14</text><text x="65" y="44" class="label">可视化</text></g>
+<g class="node" transform="translate(285 612)"><rect width="130" height="56" rx="14"/><text x="65" y="23" class="id">N15</text><text x="65" y="44" class="label">工作树</text></g>
+</svg>

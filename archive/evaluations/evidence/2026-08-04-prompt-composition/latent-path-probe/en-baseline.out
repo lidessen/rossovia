@@ -1,0 +1,14 @@
+Yes—but send it as a naming packet, not as evidence that retrieval improved quality.
+
+Next action: create one blinded, randomized Principal packet containing the strongest selected entries from both runs, remove provenance and method labels, deduplicate close variants, and add a small direct-naming baseline before sending. Ask the Principal to shortlist acceptable names, select a favorite if possible, and briefly note why.
+
+Reasoning: the project needs a human-usable name, and only the Principal can establish practical suitability. The current convergence around repair, fire, cracks, workshops, and inheritance may reflect a meaningful project identity—or merely shared machinery and source material. A blind comparison can reveal preference without inviting method-based bias. Adding a direct baseline determines whether the elaborate generation process provides value beyond straightforward naming.
+
+Evidence limits: the field’s 93 unique outputs demonstrate diversity, not quality. Archive retention and later selection introduce novelty and selector bias. Retrieval increased cost and source participation, but no evidence shows greater aesthetic merit or naming usefulness. A single Principal’s choice will resolve this project’s naming decision, not establish general superiority between methods.
+
+Decision boundary:
+
+- Send once the packet is blinded, manageable, deduplicated, and includes direct-name candidates.
+- Do not send the proposed two-arm packet unchanged if it will be presented as an experiment capable of judging retrieval.
+- Adopt a name if the Principal finds at least one candidate clearly usable.
+- If none is acceptable, treat that as failure of the current candidate set and run a focused naming round using the Principal’s feedback—not simply more retrieval.

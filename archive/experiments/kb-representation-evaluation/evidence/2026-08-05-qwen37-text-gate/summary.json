@@ -1,0 +1,105 @@
+{
+  "evidenceId": "2026-08-05-qwen37-text-gate",
+  "status": "probe",
+  "profile": {
+    "evidenceId": "2026-08-05-qwen37-text-gate",
+    "model": "opencode-go/qwen3.7-plus",
+    "executor": "opencode run --pure --format json",
+    "opencodeVersion": "1.18.13",
+    "condition": "text",
+    "profilePolicy": "new session per trial; default model variant; text attachment only; no filesystem or tools requested",
+    "order": [
+      "sparse",
+      "medium",
+      "dense",
+      "dense",
+      "medium",
+      "sparse",
+      "medium",
+      "sparse",
+      "dense"
+    ]
+  },
+  "aggregate": {
+    "trials": 9,
+    "passed": 72,
+    "questions": 72,
+    "accuracy": 1,
+    "failures": {},
+    "latencyMs": {
+      "mean": 19937.555555555555,
+      "min": 14991,
+      "max": 24697
+    },
+    "observedCost": {
+      "total": 0.11027406,
+      "mean": 0.012252673333333332,
+      "min": 0.00340436,
+      "max": 0.0138759
+    },
+    "tokens": {
+      "total": 224070,
+      "input": 54,
+      "output": 8026,
+      "reasoning": 0,
+      "cacheWrite": 192981,
+      "cacheRead": 23009
+    },
+    "inputBytes": {
+      "sparse": 641,
+      "medium": 838,
+      "dense": 1092
+    },
+    "parseFailures": 0
+  },
+  "totals": {
+    "sparse": {
+      "trials": 3,
+      "passed": 24,
+      "questions": 24,
+      "durationsMs": [
+        14991,
+        15350,
+        17001
+      ],
+      "costs": [
+        0.0129232,
+        0.012976,
+        0.0130657
+      ],
+      "parseFailures": 0
+    },
+    "medium": {
+      "trials": 3,
+      "passed": 24,
+      "questions": 24,
+      "durationsMs": [
+        18499,
+        20159,
+        21868
+      ],
+      "costs": [
+        0.0133095,
+        0.013324,
+        0.0135511
+      ],
+      "parseFailures": 0
+    },
+    "dense": {
+      "trials": 3,
+      "passed": 24,
+      "questions": 24,
+      "durationsMs": [
+        23330,
+        23543,
+        24697
+      ],
+      "costs": [
+        0.0138759,
+        0.0138443,
+        0.00340436
+      ],
+      "parseFailures": 0
+    }
+  }
+}

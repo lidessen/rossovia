@@ -1,0 +1,49 @@
+{
+  "id": "obs-20260711-deliberation-docket-usability-budget-failure",
+  "schema": "observation-record.v1",
+  "kind": "observation",
+  "occurredAt": "2026-07-11T04:13:16Z",
+  "recordedAt": "2026-07-11T04:13:16Z",
+  "subject": {
+    "type": "work-cell-deliberation",
+    "id": "founding-priority-20260711"
+  },
+  "observations": [
+    { "name": "deliberation-invocations-issued", "value": 2, "unit": "invocations" },
+    { "name": "retained-invocation-records", "value": 1, "unit": "records" },
+    { "name": "retained-member-runs", "value": 4, "unit": "runs" },
+    { "name": "terminal-status", "value": "budget_exceeded" },
+    { "name": "structured-positions-produced", "value": 0, "unit": "positions" },
+    { "name": "declared-allocation", "value": 192000, "unit": "tokens" },
+    { "name": "latest-retained-observed-tokens", "value": 229162, "unit": "tokens" },
+    { "name": "latest-retained-allocation-overrun", "value": 37162, "unit": "tokens" }
+  ],
+  "method": {
+    "kind": "calculation",
+    "name": "bounded deliberation retained-run inspection",
+    "version": "v1",
+    "limitations": [
+      "The first invocation's output path was overwritten by the second invocation, so only the later raw record remains and total consumption across both invocations cannot be reconstructed.",
+      "All members used one model family, broad read scopes, and the first deliberation adapter; this does not estimate other models, smaller dockets, or a revised interaction form."
+    ]
+  },
+  "provenance": {
+    "sourceRole": "derived",
+    "sources": [
+      {
+        "locator": ".work-cell/dockets/founding-priority-20260711.record.json",
+        "role": "raw",
+        "sha256": "41237f2f57698789790521442afca15d060536df877bd32fd94a2d22f834d6c4"
+      }
+    ]
+  },
+  "quality": {
+    "status": "raw",
+    "limitations": [
+      "The retained raw source is ignored local execution residue. This receipt preserves its locator, digest, and measured result but cannot independently reproduce the model trajectory or the overwritten first invocation."
+    ]
+  },
+  "observer": { "kind": "system", "id": "work-cell-runner" },
+  "recorder": { "kind": "agent", "id": "codex-root" },
+  "classification": "internal"
+}

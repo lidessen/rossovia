@@ -1,0 +1,7 @@
+Use only this packet. Do not inspect a repository, load Skills or memory, or discuss the experiment.
+
+A project needs a name that its human Principal can actually choose and use. A 64-call generative field produced more than 90 unique unclassified text artifacts from Chinese literary and philosophical book titles. One treatment relied on model memory; another retrieved source passages at runtime and added balanced title participation. Both treatments kept the same model, operator population, mutation graph, initial activation material, and novelty-oriented archive. Retrieval more than doubled token cost and broadened source participation, but both outputs still concentrated around the same repair, fire, crack, workshop, and inheritance language. No human comparison has shown that either treatment is aesthetically better.
+
+The proposed next step is a two-arm Principal packet containing selected name-like archive items from the memory and retrieval treatments. It has no plain, directly generated naming baseline. The field itself emits unclassified content rather than names; a later projection chooses which items look name-like.
+
+Should the current packet be sent to the Principal? Give the next action, reasoning, evidence limits, and decision boundary.

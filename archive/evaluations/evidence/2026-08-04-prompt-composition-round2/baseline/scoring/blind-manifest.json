@@ -1,0 +1,9 @@
+{
+  "version": "prompt-composition-blind-scoring.v1",
+  "groups": [
+    {"task":"T1","language":"en","packet":"packets/t1.en.txt","outputs":["outputs/cobalt.out","outputs/linen.out","outputs/sable.out"]},
+    {"task":"T1","language":"zh","packet":"packets/t1.zh.txt","outputs":["outputs/amber.out","outputs/cedar.out","outputs/ivory.out"]},
+    {"task":"T2","language":"en","packet":"packets/t2.en.txt","outputs":["outputs/elm.out","outputs/opal.out","outputs/slate.out"]},
+    {"task":"T2","language":"zh","packet":"packets/t2.zh.txt","outputs":["outputs/birch.out","outputs/coral.out","outputs/flint.out"]}
+  ]
+}

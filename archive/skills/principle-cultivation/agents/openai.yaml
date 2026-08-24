@@ -1,0 +1,4 @@
+interface:
+  display_name: "Principle Cultivation"
+  short_description: "Research, propose, and steward a principle lineage."
+  default_prompt: "Use $principle-cultivation to research this principle question before deciding whether it merits a selective review."

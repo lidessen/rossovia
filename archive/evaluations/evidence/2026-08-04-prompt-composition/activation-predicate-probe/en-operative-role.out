@@ -1,0 +1,95 @@
+I would use three subagents plus the main agent. I would not assign a separate agent to “tests,” because tests should move with the behavior they validate, and shared fixtures create edit conflicts.
+
+First, the main agent reconstructs the migration end to end: locate the canonical task type/schema, every serialization and deserialization path, parser normalization, CLI formatting, UI consumption, fixtures, snapshots, and repository instructions. From that, I would establish this compatibility contract:
+
+- In memory, the field is always `revision`.
+- Reads accept `revision` and fall back to `taskRevision` only when `revision` is absent—not merely falsy.
+- If both fields exist, `revision` wins.
+- Every write emits only `revision`; `taskRevision` must be removed rather than copied through.
+- CLI and UI consume the normalized `revision` field and do not independently implement legacy fallback.
+- Compatibility lasts at the persistence/parser boundary for this release.
+
+The main agent owns that contract, any shared task type/schema, shared fixtures, migration policy, final reconciliation, and acceptance.
+
+### Delegation packets
+
+**Agent 1: persistence and parser boundary**
+
+Owned edits:
+
+- Task-record decoder/deserializer
+- Parser normalization
+- Encoder/serializer and write paths
+- Focused parser/persistence tests
+
+Required cases:
+
+- New record containing only `revision`
+- Old record containing only `taskRevision`
+- Record containing both fields, with `revision` taking precedence
+- Values such as `0`, empty string, or `null`, according to the authoritative type contract
+- Rewriting an old record produces only `revision`
+- Unknown-field or object-spread logic cannot leak `taskRevision` into new output
+
+This agent may report shared-type changes but does not edit shared schema/type files unless explicitly assigned.
+
+**Agent 2: CLI surface**
+
+Owned edits:
+
+- CLI task output and formatting
+- CLI-specific adapters
+- CLI tests, snapshots, and golden output
+
+The CLI must use the normalized `revision` model. It must not add another compatibility shim or expose `taskRevision` in JSON, tables, diagnostics, or templates. If the CLI has a raw-record mode, the agent flags it because that affects the central compatibility decision.
+
+**Agent 3: Workbench UI**
+
+Owned edits:
+
+- Workbench task models, selectors, components, and client adapters
+- UI tests, mocks, stories, and snapshots
+
+The UI should receive or create `revision` exclusively. Legacy names must disappear from client-generated payloads, caches, optimistic updates, and test fixtures. Any persisted browser state is reported separately because it may require a UI-boundary migration rather than a simple rename.
+
+### Main-agent work
+
+While the agents work, the main agent handles the coupled pieces:
+
+- Update the canonical task type/schema to `revision`.
+- Decide exact precedence and nullability from authoritative schemas and existing behavior.
+- Update shared fixtures only after identifying all consumers.
+- Inspect less obvious writers: cloning, retries, imports/exports, cache persistence, API payload construction, and object spreads.
+- Maintain a repository-wide inventory of every `taskRevision` occurrence.
+- Avoid editing files owned by active agents unless coordination explicitly transfers ownership.
+
+Agents return a concise change report: files changed, tests run, remaining legacy references, assumptions, and any requested shared change. Their claims are treated as leads; the main agent checks the actual diff and relevant source definitions before integrating them.
+
+### Reconciliation
+
+After all packets return, I would:
+
+1. Review each diff against the central contract.
+2. Resolve shared-type and fixture updates centrally.
+3. Search the entire repository for both names.
+4. Classify every remaining `taskRevision` occurrence:
+   - permitted compatibility read,
+   - historical documentation/changelog,
+   - or a defect that must be removed.
+5. Inspect every serializer and outbound payload to prove the legacy key cannot be written.
+6. Ensure compatibility logic exists in one boundary layer rather than being duplicated in the CLI and UI.
+7. Review snapshots carefully; bulk snapshot updates can conceal an incorrect field name.
+
+### Verification
+
+The acceptance suite would include:
+
+- Unit tests for precedence and legacy fallback.
+- Serialization tests proving new writes contain `revision` and do not contain `taskRevision`.
+- A round-trip test: load an old record, save it, reload it, and verify only the new field remains.
+- Parser, CLI, and Workbench focused suites.
+- Repository-wide type checking, linting, and full tests.
+- A final text search for `taskRevision`, with every surviving match justified.
+- If practical, an end-to-end test using an old persisted fixture through parser → internal model → CLI/UI → save.
+
+The migration is complete only when old records remain readable, both user-facing surfaces consistently display `revision`, and no executable new-write path can emit `taskRevision`.

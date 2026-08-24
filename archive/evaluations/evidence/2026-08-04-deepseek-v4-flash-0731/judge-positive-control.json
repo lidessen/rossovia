@@ -1,0 +1,88 @@
+{
+  "version": "work-cell.model-evaluation.judge-positive-control.v1",
+  "startedAt": "2026-08-04T23:40:45.108Z",
+  "finishedAt": "2026-08-04T23:40:52.999Z",
+  "accepted": true,
+  "descriptor": {
+    "adapter": "ai-sdk-v7",
+    "provider": "kimi-coding",
+    "model": "k3"
+  },
+  "judgement": {
+    "preferred": "tie",
+    "acceptance": [
+      {
+        "condition": "Both candidates satisfy the single retained acceptance condition.",
+        "a": "pass",
+        "b": "pass",
+        "evidence": [
+          "Candidate A run synthetic-control: status passed, verification.passed true, finalText 'The retained evidence satisfies the bounded condition.'",
+          "Candidate B run synthetic-control-b: status passed, verification.passed true, identical finalText"
+        ]
+      }
+    ],
+    "findings": [
+      "Both candidates produced identical retained results: one passing run each, same finalText, empty artifacts, verification passed, no workspace changes.",
+      "No material difference exists between candidates; per the rubric, identical material results require a tie."
+    ],
+    "evidence": [
+      "A: runId synthetic-control, status passed, verification.passed true, workspaceDiff.changed false",
+      "B: runId synthetic-control-b, status passed, verification.passed true, workspaceDiff.changed false",
+      "Identical finalText in both records"
+    ]
+  },
+  "usage": {
+    "inputTokens": 831,
+    "outputTokens": 275,
+    "totalTokens": 1106,
+    "cachedInputTokens": 0
+  },
+  "raw": {
+    "attempts": [
+      {
+        "attempt": 1,
+        "text": "",
+        "reasoning": "Both identical, pass. Return tie.",
+        "providerMetadata": {
+          "moonshotai": {},
+          "workCellRoute": {
+            "routeId": "validation",
+            "servedBy": "kimi-coding",
+            "model": "k3",
+            "mode": "direct",
+            "attempts": []
+          }
+        },
+        "toolCalls": [
+          {
+            "toolCallId": "tool_WNmoOIzen7SVCO8TPKCTYiHS",
+            "toolName": "submit_judgement",
+            "input": {
+              "preferred": "tie",
+              "acceptance": [
+                {
+                  "condition": "Both candidates satisfy the single retained acceptance condition.",
+                  "a": "pass",
+                  "b": "pass",
+                  "evidence": [
+                    "Candidate A run synthetic-control: status passed, verification.passed true, finalText 'The retained evidence satisfies the bounded condition.'",
+                    "Candidate B run synthetic-control-b: status passed, verification.passed true, identical finalText"
+                  ]
+                }
+              ],
+              "findings": [
+                "Both candidates produced identical retained results: one passing run each, same finalText, empty artifacts, verification passed, no workspace changes.",
+                "No material difference exists between candidates; per the rubric, identical material results require a tie."
+              ],
+              "evidence": [
+                "A: runId synthetic-control, status passed, verification.passed true, workspaceDiff.changed false",
+                "B: runId synthetic-control-b, status passed, verification.passed true, workspaceDiff.changed false",
+                "Identical finalText in both records"
+              ]
+            }
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -1,0 +1,61 @@
+{
+  "evidenceId": "2026-08-06-qwen37-associative-recall-v1",
+  "status": "post-hoc-diagnostic",
+  "rawSummaryUnchanged": "summary.json",
+  "byCondition": {
+    "image": {
+      "sourceOnly": {
+        "method": "Post-hoc diagnostic: ignore anchor spelling; require opened source membership in the pre-registered claim support allowlist. The allowlist is not exhaustive semantic judgment.",
+        "submittedCitations": 15,
+        "allowlistedCitations": 9,
+        "citationPrecision": 0.6,
+        "citationCoverage": 0.75,
+        "strictGroundedTrials": 1,
+        "trials": 6
+      },
+      "resources": {
+        "route": {
+          "calls": 6,
+          "durationMs": 168274,
+          "observedCost": 0.0848766
+        },
+        "answer": {
+          "calls": 6,
+          "durationMs": 138782,
+          "observedCost": 0.0857157
+        },
+        "totalDurationMs": 307056,
+        "totalObservedCost": 0.17059229999999997,
+        "meanActivationBytes": 154243.5,
+        "meanSelectedSourceBytes": 5498.833333333333
+      }
+    },
+    "search": {
+      "sourceOnly": {
+        "method": "Post-hoc diagnostic: ignore anchor spelling; require opened source membership in the pre-registered claim support allowlist. The allowlist is not exhaustive semantic judgment.",
+        "submittedCitations": 19,
+        "allowlistedCitations": 11,
+        "citationPrecision": 0.5789473684210527,
+        "citationCoverage": 0.8333333333333334,
+        "strictGroundedTrials": 1,
+        "trials": 6
+      },
+      "resources": {
+        "route": {
+          "calls": 6,
+          "durationMs": 103587,
+          "observedCost": 0.0764035
+        },
+        "answer": {
+          "calls": 6,
+          "durationMs": 107533,
+          "observedCost": 0.0832255
+        },
+        "totalDurationMs": 211120,
+        "totalObservedCost": 0.159629,
+        "meanActivationBytes": 464.8333333333333,
+        "meanSelectedSourceBytes": 6205.666666666667
+      }
+    }
+  }
+}

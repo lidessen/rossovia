@@ -1,0 +1,230 @@
+{
+  "trial": 2,
+  "repetition": 1,
+  "tier": "medium",
+  "condition": "text",
+  "fixtureId": "image-edge-medium-v1",
+  "model": "opencode-go/qwen3.7-plus",
+  "startedAt": "2026-08-06T07:08:55.420Z",
+  "finishedAt": "2026-08-06T07:09:13.920Z",
+  "durationMs": 18499,
+  "exitCode": 0,
+  "input": {
+    "path": "inputs/medium.txt",
+    "sha256": "sha256:41259cdb691740ae8ef7f24606b2660db88cedd6e96d0629b9f77e0a042d6a58",
+    "bytes": 838
+  },
+  "svg": {
+    "path": "../../fixtures/image-diagnostic/medium/graph.svg",
+    "sha256": "sha256:78ad84a34ee4ea0c129709cd5d61240c3e332162975325494cb3cfdefab8f07c"
+  },
+  "questions": [
+    {
+      "id": "edge-positive",
+      "family": "edge",
+      "prompt": "是否存在 N04 --indexed_by--> N05？只回答 yes 或 no。"
+    },
+    {
+      "id": "edge-direction",
+      "family": "edge",
+      "prompt": "是否存在 N05 --indexed_by--> N04？只回答 yes 或 no。"
+    },
+    {
+      "id": "edge-negative",
+      "family": "edge",
+      "prompt": "是否存在 N04 --supports--> N08？只回答 yes 或 no。"
+    },
+    {
+      "id": "edge-label",
+      "family": "edge",
+      "prompt": "N13 指向 N09 的直接关系名称是什么？"
+    },
+    {
+      "id": "relation-chain",
+      "family": "multihop",
+      "prompt": "从 N04 开始依次沿 indexed_by、enables、returns、supports 四种关系，节点序列是什么？用 > 连接。"
+    },
+    {
+      "id": "fanout",
+      "family": "incident",
+      "prompt": "N14 的所有直接出边目标有哪些？按 ID 升序，用逗号连接。"
+    },
+    {
+      "id": "indegree",
+      "family": "incident",
+      "prompt": "N02 的入度是多少？只回答整数。"
+    },
+    {
+      "id": "dense-distractor",
+      "family": "edge",
+      "prompt": "是否存在 N09 --revises--> N02？只回答 yes 或 no。"
+    }
+  ],
+  "answerText": "[{\"id\":\"edge-positive\",\"answer\":\"yes\"},{\"id\":\"edge-direction\",\"answer\":\"no\"},{\"id\":\"edge-negative\",\"answer\":\"no\"},{\"id\":\"edge-label\",\"answer\":\"checks\"},{\"id\":\"relation-chain\",\"answer\":\"N04 > N05 > N06 > N07 > N08\"},{\"id\":\"fanout\",\"answer\":\"N04,N07,N08\"},{\"id\":\"indegree\",\"answer\":\"5\"},{\"id\":\"dense-distractor\",\"answer\":\"no\"}]",
+  "answers": [
+    {
+      "id": "edge-positive",
+      "answer": "yes"
+    },
+    {
+      "id": "edge-direction",
+      "answer": "no"
+    },
+    {
+      "id": "edge-negative",
+      "answer": "no"
+    },
+    {
+      "id": "edge-label",
+      "answer": "checks"
+    },
+    {
+      "id": "relation-chain",
+      "answer": "N04 > N05 > N06 > N07 > N08"
+    },
+    {
+      "id": "fanout",
+      "answer": "N04,N07,N08"
+    },
+    {
+      "id": "indegree",
+      "answer": "5"
+    },
+    {
+      "id": "dense-distractor",
+      "answer": "no"
+    }
+  ],
+  "score": {
+    "passed": 8,
+    "total": 8,
+    "results": [
+      {
+        "id": "edge-positive",
+        "family": "edge",
+        "expected": "yes",
+        "actual": "yes",
+        "pass": true
+      },
+      {
+        "id": "edge-direction",
+        "family": "edge",
+        "expected": "no",
+        "actual": "no",
+        "pass": true
+      },
+      {
+        "id": "edge-negative",
+        "family": "edge",
+        "expected": "no",
+        "actual": "no",
+        "pass": true
+      },
+      {
+        "id": "edge-label",
+        "family": "edge",
+        "expected": "checks",
+        "actual": "checks",
+        "pass": true
+      },
+      {
+        "id": "relation-chain",
+        "family": "multihop",
+        "expected": "N04>N05>N06>N07>N08",
+        "actual": "N04>N05>N06>N07>N08",
+        "pass": true
+      },
+      {
+        "id": "fanout",
+        "family": "incident",
+        "expected": "N04,N07,N08",
+        "actual": "N04,N07,N08",
+        "pass": true
+      },
+      {
+        "id": "indegree",
+        "family": "incident",
+        "expected": "5",
+        "actual": "5",
+        "pass": true
+      },
+      {
+        "id": "dense-distractor",
+        "family": "edge",
+        "expected": "no",
+        "actual": "no",
+        "pass": true
+      }
+    ]
+  },
+  "parseError": null,
+  "usage": {
+    "tokens": {
+      "total": 24814,
+      "input": 6,
+      "output": 821,
+      "reasoning": 0,
+      "cache": {
+        "write": 23987,
+        "read": 0
+      }
+    },
+    "cost": 0.0133095,
+    "reason": "stop"
+  },
+  "stderr": null,
+  "rawEvents": [
+    {
+      "type": "step_start",
+      "timestamp": 1786000139834,
+      "sessionID": "ses_02a18a924ffeCQqst32f5269Su",
+      "part": {
+        "id": "prt_fd5e76635001Ecp3OU1PCIbO9U",
+        "messageID": "msg_fd5e7577d001mzlvViQ3tUEkY1",
+        "sessionID": "ses_02a18a924ffeCQqst32f5269Su",
+        "snapshot": "1acf013579244d6596a5dfd88993e3ba0f49100d",
+        "type": "step-start"
+      }
+    },
+    {
+      "type": "text",
+      "timestamp": 1786000153783,
+      "sessionID": "ses_02a18a924ffeCQqst32f5269Su",
+      "part": {
+        "id": "prt_fd5e795fe00130UwCt8okuho0V",
+        "messageID": "msg_fd5e7577d001mzlvViQ3tUEkY1",
+        "sessionID": "ses_02a18a924ffeCQqst32f5269Su",
+        "type": "text",
+        "text": "[{\"id\":\"edge-positive\",\"answer\":\"yes\"},{\"id\":\"edge-direction\",\"answer\":\"no\"},{\"id\":\"edge-negative\",\"answer\":\"no\"},{\"id\":\"edge-label\",\"answer\":\"checks\"},{\"id\":\"relation-chain\",\"answer\":\"N04 > N05 > N06 > N07 > N08\"},{\"id\":\"fanout\",\"answer\":\"N04,N07,N08\"},{\"id\":\"indegree\",\"answer\":\"5\"},{\"id\":\"dense-distractor\",\"answer\":\"no\"}]",
+        "time": {
+          "start": 1786000152062,
+          "end": 1786000153779
+        }
+      }
+    },
+    {
+      "type": "step_finish",
+      "timestamp": 1786000153866,
+      "sessionID": "ses_02a18a924ffeCQqst32f5269Su",
+      "part": {
+        "id": "prt_fd5e79d07001PlUomlgWhYDY7k",
+        "reason": "stop",
+        "snapshot": "1acf013579244d6596a5dfd88993e3ba0f49100d",
+        "messageID": "msg_fd5e7577d001mzlvViQ3tUEkY1",
+        "sessionID": "ses_02a18a924ffeCQqst32f5269Su",
+        "type": "step-finish",
+        "tokens": {
+          "total": 24814,
+          "input": 6,
+          "output": 821,
+          "reasoning": 0,
+          "cache": {
+            "write": 23987,
+            "read": 0
+          }
+        },
+        "cost": 0.0133095
+      }
+    }
+  ]
+}

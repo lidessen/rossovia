@@ -1,0 +1,287 @@
+{
+  "trial": 6,
+  "question": {
+    "id": "Q3",
+    "prompt": "A transcript was registered, then its original file was moved before digestion. Which boundary was broken, and what committed primitive is meant to keep the record self-contained?"
+  },
+  "condition": "search",
+  "route": {
+    "candidates": [
+      "SHILU-S02",
+      "SHILU-S06",
+      "SHILU-S07",
+      "SHILU-S11",
+      "SHILU-S04"
+    ]
+  },
+  "answer": {
+    "claims": [
+      {
+        "claimId": "Q3-C1",
+        "valueKey": "evidence-provenance",
+        "citations": [
+          {
+            "sourceId": "SHILU-S06",
+            "anchor": "Source Content: Copy-on-Add by Default, Opt-Out Reference"
+          }
+        ]
+      },
+      {
+        "claimId": "Q3-C2",
+        "valueKey": "store-raw-copy",
+        "citations": [
+          {
+            "sourceId": "SHILU-S06",
+            "anchor": "Source Content: Copy-on-Add by Default, Opt-Out Reference"
+          },
+          {
+            "sourceId": "SHILU-S07",
+            "anchor": "pkg/source/source.go#Normalize / StoreRaw"
+          }
+        ]
+      }
+    ]
+  },
+  "score": {
+    "gold": [
+      "SHILU-S06",
+      "SHILU-S07"
+    ],
+    "candidates": [
+      "SHILU-S02",
+      "SHILU-S06",
+      "SHILU-S07",
+      "SHILU-S11",
+      "SHILU-S04"
+    ],
+    "hitAt1": false,
+    "hitAt3": true,
+    "hitAt5": true,
+    "recallAt1": 0,
+    "recallAt3": 1,
+    "recallAt5": 1,
+    "allRequiredHitAt3": true,
+    "allRequiredHitAt5": true,
+    "reciprocalRank": 0.5,
+    "openedSources": 5,
+    "answerAccuracy": 1,
+    "citationPrecision": 0.3333333333333333,
+    "citationCoverage": 0.5,
+    "protocolValid": true,
+    "groundedSuccess": false,
+    "claimResults": [
+      {
+        "claimId": "Q3-C1",
+        "expectedKey": "evidence-provenance",
+        "actualKey": "evidence-provenance",
+        "answerCorrect": true,
+        "citations": [
+          {
+            "sourceId": "SHILU-S06",
+            "anchor": "Source Content: Copy-on-Add by Default, Opt-Out Reference",
+            "locatable": true,
+            "opened": true,
+            "supportsClaim": true,
+            "correct": true
+          }
+        ],
+        "hasCorrectCitation": true
+      },
+      {
+        "claimId": "Q3-C2",
+        "expectedKey": "store-raw-copy",
+        "actualKey": "store-raw-copy",
+        "answerCorrect": true,
+        "citations": [
+          {
+            "sourceId": "SHILU-S06",
+            "anchor": "Source Content: Copy-on-Add by Default, Opt-Out Reference",
+            "locatable": true,
+            "opened": true,
+            "supportsClaim": false,
+            "correct": false
+          },
+          {
+            "sourceId": "SHILU-S07",
+            "anchor": "pkg/source/source.go#Normalize / StoreRaw",
+            "locatable": false,
+            "opened": true,
+            "supportsClaim": true,
+            "correct": false
+          }
+        ],
+        "hasCorrectCitation": false
+      }
+    ]
+  },
+  "routeParseError": null,
+  "answerParseError": null,
+  "activation": {
+    "path": "inputs/search-Q3.txt",
+    "sha256": "sha256:9b7998051b6b22647cca323df73cf52827c8d2fbe4bcf3bd5777d8e2144e273d",
+    "bytes": 483
+  },
+  "sourcePacket": {
+    "path": "inputs/06-Q3-search-sources.md",
+    "sha256": "sha256:0e659d09f56008c8ab6c53c16e8e460074e5f07834eef57526134b96d4787dd6",
+    "bytes": 7388
+  },
+  "routeRun": {
+    "startedAt": "2026-08-06T09:50:08.601Z",
+    "finishedAt": "2026-08-06T09:50:27.111Z",
+    "durationMs": 18509,
+    "exitCode": 0,
+    "answerText": "{\"candidates\":[\"SHILU-S02\",\"SHILU-S06\",\"SHILU-S07\",\"SHILU-S11\",\"SHILU-S04\"]}",
+    "usage": {
+      "tokens": {
+        "total": 24170,
+        "input": 6,
+        "output": 665,
+        "reasoning": 0,
+        "cache": {
+          "write": 23499,
+          "read": 0
+        }
+      },
+      "cost": 0.0128159,
+      "reason": "stop"
+    },
+    "stderr": null,
+    "eventParseError": null,
+    "toolProtocolError": null,
+    "rawEvents": [
+      {
+        "type": "step_start",
+        "timestamp": 1786009813604,
+        "sessionID": "ses_029850f25ffenYs1NKZbL60yw5",
+        "part": {
+          "id": "prt_fd67b0260001Noc8BpRAiHDFNM",
+          "messageID": "msg_fd67af185001lUULQ1TQtzrP98",
+          "sessionID": "ses_029850f25ffenYs1NKZbL60yw5",
+          "snapshot": "1c5c39864c7d816aee71b67894b705aa03a32f27",
+          "type": "step-start"
+        }
+      },
+      {
+        "type": "text",
+        "timestamp": 1786009824901,
+        "sessionID": "ses_029850f25ffenYs1NKZbL60yw5",
+        "part": {
+          "id": "prt_fd67b2c55001FXxZFLrlN8xkgY",
+          "messageID": "msg_fd67af185001lUULQ1TQtzrP98",
+          "sessionID": "ses_029850f25ffenYs1NKZbL60yw5",
+          "type": "text",
+          "text": "{\"candidates\":[\"SHILU-S02\",\"SHILU-S06\",\"SHILU-S07\",\"SHILU-S11\",\"SHILU-S04\"]}",
+          "time": {
+            "start": 1786009824341,
+            "end": 1786009824896
+          }
+        }
+      },
+      {
+        "type": "step_finish",
+        "timestamp": 1786009827067,
+        "sessionID": "ses_029850f25ffenYs1NKZbL60yw5",
+        "part": {
+          "id": "prt_fd67b36f8001W7jGDsFgwCuBWb",
+          "reason": "stop",
+          "snapshot": "1c5c39864c7d816aee71b67894b705aa03a32f27",
+          "messageID": "msg_fd67af185001lUULQ1TQtzrP98",
+          "sessionID": "ses_029850f25ffenYs1NKZbL60yw5",
+          "type": "step-finish",
+          "tokens": {
+            "total": 24170,
+            "input": 6,
+            "output": 665,
+            "reasoning": 0,
+            "cache": {
+              "write": 23499,
+              "read": 0
+            }
+          },
+          "cost": 0.0128159
+        }
+      }
+    ],
+    "rawStdout": null
+  },
+  "answerRun": {
+    "startedAt": "2026-08-06T09:50:27.111Z",
+    "finishedAt": "2026-08-06T09:50:44.627Z",
+    "durationMs": 17515,
+    "exitCode": 0,
+    "answerText": "{\"claims\":[{\"claimId\":\"Q3-C1\",\"valueKey\":\"evidence-provenance\",\"citations\":[{\"sourceId\":\"SHILU-S06\",\"anchor\":\"Source Content: Copy-on-Add by Default, Opt-Out Reference\"}]},{\"claimId\":\"Q3-C2\",\"valueKey\":\"store-raw-copy\",\"citations\":[{\"sourceId\":\"SHILU-S06\",\"anchor\":\"Source Content: Copy-on-Add by Default, Opt-Out Reference\"},{\"sourceId\":\"SHILU-S07\",\"anchor\":\"pkg/source/source.go#Normalize / StoreRaw\"}]}]}",
+    "usage": {
+      "tokens": {
+        "total": 26822,
+        "input": 6,
+        "output": 635,
+        "reasoning": 0,
+        "cache": {
+          "write": 26181,
+          "read": 0
+        }
+      },
+      "cost": 0.0141089,
+      "reason": "stop"
+    },
+    "stderr": null,
+    "eventParseError": null,
+    "toolProtocolError": null,
+    "rawEvents": [
+      {
+        "type": "step_start",
+        "timestamp": 1786009832524,
+        "sessionID": "ses_02984c6d4ffejvals5MfvF7Iav",
+        "part": {
+          "id": "prt_fd67b4c47001BHGd9CzF0ofs3v",
+          "messageID": "msg_fd67b39d60017d7sB3hVhO2r5o",
+          "sessionID": "ses_02984c6d4ffejvals5MfvF7Iav",
+          "snapshot": "0f6c1cf98dfd240835131cfb2953417659453cac",
+          "type": "step-start"
+        }
+      },
+      {
+        "type": "text",
+        "timestamp": 1786009843270,
+        "sessionID": "ses_02984c6d4ffejvals5MfvF7Iav",
+        "part": {
+          "id": "prt_fd67b6e5d0011AIxYdNemRuDz6",
+          "messageID": "msg_fd67b39d60017d7sB3hVhO2r5o",
+          "sessionID": "ses_02984c6d4ffejvals5MfvF7Iav",
+          "type": "text",
+          "text": "{\"claims\":[{\"claimId\":\"Q3-C1\",\"valueKey\":\"evidence-provenance\",\"citations\":[{\"sourceId\":\"SHILU-S06\",\"anchor\":\"Source Content: Copy-on-Add by Default, Opt-Out Reference\"}]},{\"claimId\":\"Q3-C2\",\"valueKey\":\"store-raw-copy\",\"citations\":[{\"sourceId\":\"SHILU-S06\",\"anchor\":\"Source Content: Copy-on-Add by Default, Opt-Out Reference\"},{\"sourceId\":\"SHILU-S07\",\"anchor\":\"pkg/source/source.go#Normalize / StoreRaw\"}]}]}",
+          "time": {
+            "start": 1786009841245,
+            "end": 1786009843268
+          }
+        }
+      },
+      {
+        "type": "step_finish",
+        "timestamp": 1786009844584,
+        "sessionID": "ses_02984c6d4ffejvals5MfvF7Iav",
+        "part": {
+          "id": "prt_fd67b7b65001I83XglIhU5qHTb",
+          "reason": "stop",
+          "snapshot": "0f6c1cf98dfd240835131cfb2953417659453cac",
+          "messageID": "msg_fd67b39d60017d7sB3hVhO2r5o",
+          "sessionID": "ses_02984c6d4ffejvals5MfvF7Iav",
+          "type": "step-finish",
+          "tokens": {
+            "total": 26822,
+            "input": 6,
+            "output": 635,
+            "reasoning": 0,
+            "cache": {
+              "write": 26181,
+              "read": 0
+            }
+          },
+          "cost": 0.0141089
+        }
+      }
+    ],
+    "rawStdout": null
+  }
+}

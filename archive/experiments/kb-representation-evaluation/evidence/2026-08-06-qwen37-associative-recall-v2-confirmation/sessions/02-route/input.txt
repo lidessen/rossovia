@@ -1,0 +1,7 @@
+# shilu-associative-recall-v2 deterministic BM25 search
+# Ranked locator-only candidates. Titles are index metadata, not evidence.
+RESULT	1	SHILU-S01	DESIGN.md · Principles	6.687104
+RESULT	2	SHILU-S04	DESIGN.md · Agent Interaction / Workflow	4.030941
+RESULT	3	SHILU-S02	DESIGN.md · Source / Entry / Entry Event	2.780771
+RESULT	4	SHILU-S08	pkg/core/core.go · Core invariant	2.748238
+RESULT	5	SHILU-S06	DESIGN.md · Source Content	2.530992

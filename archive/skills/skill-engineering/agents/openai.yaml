@@ -1,0 +1,4 @@
+interface:
+  display_name: "Skill Engineering"
+  short_description: "Design and test agent skills"
+  default_prompt: "Use $skill-engineering to design a skill that improves agent behavior."

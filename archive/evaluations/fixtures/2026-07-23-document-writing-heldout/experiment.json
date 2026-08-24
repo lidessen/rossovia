@@ -1,0 +1,82 @@
+{
+  "id": "document-writing-heldout-incident",
+  "fixture": {
+    "root": ".",
+    "overlays": [
+      {
+        "source": "../../../../principles/SEQUENCE.md",
+        "destination": "principles/SEQUENCE.md"
+      },
+      {
+        "source": "../../../../principles/interpretations",
+        "destination": "principles/interpretations"
+      },
+      {
+        "source": "../../../../skills/document-writing",
+        "destination": "skills/document-writing"
+      }
+    ]
+  },
+  "outputDir": "../../../../packages/work-cell/.work-cell/experiments",
+  "task": {
+    "id": "write-incident-opening",
+    "intent": "Rewrite draft.md as the opening of an internal incident report for engineers and support leads. They need to understand the impact, confirmed mechanism, containment, durable decision, ownership, and remaining uncertainty without blame or reassurance. Use only source.md.",
+    "workspace": {
+      "readPaths": [
+        "source.md",
+        "skills/document-writing",
+        "principles/SEQUENCE.md",
+        "principles/interpretations"
+      ],
+      "writePaths": ["draft.md"],
+      "allowedCommands": []
+    },
+    "genome": {
+      "sequencePath": "principles/SEQUENCE.md",
+      "interpretationsDir": "principles/interpretations",
+      "inheritedLineage": {
+        "primary": "P16",
+        "supporting": ["P01", "P05", "P07"]
+      }
+    },
+    "dna": {
+      "baseInstructions": "Act as the accountable maintainer of an internal engineering document. Read the complete source, preserve every qualification, and write only the finished opening to draft.md. Do not discuss the process.",
+      "capabilities": ["read", "write"]
+    },
+    "capabilitiesRequired": ["read", "write"],
+    "acceptance": [
+      "Read source.md before writing.",
+      "Replace draft.md with an English incident-report opening for engineers and support leads.",
+      "Preserve the confirmed impact, mechanism, containment, durable decision, owner, date, and remaining uncertainty without unsupported claims."
+    ],
+    "artifacts": [
+      {
+        "path": "draft.md",
+        "instructions": "The finished incident-report opening."
+      }
+    ],
+    "budget": {
+      "maxSteps": 8,
+      "estimatedTokens": 12000,
+      "estimatedTokensTolerance": 1,
+      "maxDurationMs": 120000,
+      "maxCommandOutputBytes": 4000
+    }
+  },
+  "variants": [
+    {
+      "id": "baseline"
+    },
+    {
+      "id": "document-writing",
+      "treatment": {
+        "id": "installed-document-writing-skill",
+        "instructions": "Use the installed document-writing skill for this task. Read skills/document-writing/SKILL.md and follow its progressive-disclosure condition exactly; do not load a reference merely because the document is long. Apply its method to the artifact and do not mention the skill in the document."
+      }
+    }
+  ],
+  "repetitions": 2,
+  "judge": {
+    "rubric": "Judge the incident openings as real internal documents, not chat answers. The complete authorized source says: July 18 09:12 UTC, release 1.8.0 workers duplicated seven of 214 delivery jobs; three customers received duplicate emails; no duplicate billing; scheduler disabled 09:41; backlog cleared 10:08; acknowledgement occurred after the external email API; retry visibility was 20 seconds; all seven duplicate calls exceeded 20 seconds and became visible before acknowledgement; rollback plus 90-second timeout contained it; Queue team owns idempotency keys rejected at the email boundary by July 25; logs cannot establish whether shorter-latency duplicate attempts occurred before July 18. Factual fidelity is a gate. Then prefer a connected explanation that lets engineers and support leads place impact, mechanism, containment, durable decision, ownership, and uncertainty. Do not reward length or formatting. Penalize blame, reassurance, generic lessons, unsupported recurrence claims, catalog sections, and assistant-answer ceremony. Prefer a variant only for a material repeated difference; otherwise return tie or inconclusive."
+  }
+}

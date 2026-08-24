@@ -1,0 +1,17 @@
+{
+  "input": {
+    "type": "job.finished",
+    "job_id": "job-93",
+    "occurred_at": "2026-08-06T15:30:00Z",
+    "result": {
+      "outcome": "failed",
+      "retryable": false
+    }
+  },
+  "expected": {
+    "jobId": "job-93",
+    "kind": "succeeded",
+    "retry": "none",
+    "occurredAt": "2026-08-06T15:30:00Z"
+  }
+}

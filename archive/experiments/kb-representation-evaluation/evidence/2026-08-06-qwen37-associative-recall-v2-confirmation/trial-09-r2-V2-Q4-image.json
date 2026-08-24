@@ -1,0 +1,312 @@
+{
+  "trial": 9,
+  "repetition": 2,
+  "caseSet": "confirmation",
+  "question": {
+    "id": "V2-Q4",
+    "prompt": "During entry creation, catalog indexing returns an error. According to the implementation's operation order, what has happened to the entry, and has its creation event been recorded before the error returns?"
+  },
+  "condition": "image",
+  "route": {
+    "candidates": [
+      "SHILU-S12",
+      "SHILU-S08",
+      "SHILU-S02",
+      "SHILU-S03",
+      "SHILU-S01"
+    ]
+  },
+  "answer": {
+    "claims": [
+      {
+        "claimId": "V2-Q4-C1",
+        "valueKey": "entry-already-persisted",
+        "citations": [
+          {
+            "sourceId": "SHILU-S12",
+            "anchorId": "an_922b"
+          }
+        ]
+      },
+      {
+        "claimId": "V2-Q4-C2",
+        "valueKey": "creation-event-not-recorded",
+        "citations": [
+          {
+            "sourceId": "SHILU-S12",
+            "anchorId": "an_922b"
+          },
+          {
+            "sourceId": "SHILU-S12",
+            "anchorId": "an_d8e5"
+          }
+        ]
+      }
+    ]
+  },
+  "score": {
+    "retrievalRelevantSourceIds": [
+      "SHILU-S12"
+    ],
+    "candidates": [
+      "SHILU-S12",
+      "SHILU-S08",
+      "SHILU-S02",
+      "SHILU-S03",
+      "SHILU-S01"
+    ],
+    "hitAt1": true,
+    "hitAt3": true,
+    "hitAt5": true,
+    "recallAt1": 1,
+    "recallAt3": 1,
+    "recallAt5": 1,
+    "allRelevantHitAt3": true,
+    "allRelevantHitAt5": true,
+    "reciprocalRank": 1,
+    "openedSources": 5,
+    "answerAccuracy": 1,
+    "claimCount": 2,
+    "correctAnswerCount": 2,
+    "citationPrecision": 1,
+    "citationCoverage": 1,
+    "submittedCitationCount": 3,
+    "correctCitationCount": 3,
+    "requiredEvidenceGroupCount": 3,
+    "coveredEvidenceGroupCount": 3,
+    "protocolValid": true,
+    "groundedSuccess": true,
+    "claimResults": [
+      {
+        "claimId": "V2-Q4-C1",
+        "expectedKey": "entry-already-persisted",
+        "actualKey": "entry-already-persisted",
+        "answerCorrect": true,
+        "citations": [
+          {
+            "sourceId": "SHILU-S12",
+            "anchorId": "an_922b",
+            "locatable": true,
+            "opened": true,
+            "allowed": true,
+            "correct": true
+          }
+        ],
+        "evidenceGroups": [
+          {
+            "groupId": "V2-Q4-C1-G1",
+            "covered": true
+          }
+        ],
+        "fullyGrounded": true
+      },
+      {
+        "claimId": "V2-Q4-C2",
+        "expectedKey": "creation-event-not-recorded",
+        "actualKey": "creation-event-not-recorded",
+        "answerCorrect": true,
+        "citations": [
+          {
+            "sourceId": "SHILU-S12",
+            "anchorId": "an_922b",
+            "locatable": true,
+            "opened": true,
+            "allowed": true,
+            "correct": true
+          },
+          {
+            "sourceId": "SHILU-S12",
+            "anchorId": "an_d8e5",
+            "locatable": true,
+            "opened": true,
+            "allowed": true,
+            "correct": true
+          }
+        ],
+        "evidenceGroups": [
+          {
+            "groupId": "V2-Q4-C2-G1",
+            "covered": true
+          },
+          {
+            "groupId": "V2-Q4-C2-G2",
+            "covered": true
+          }
+        ],
+        "fullyGrounded": true
+      }
+    ]
+  },
+  "routeParseError": null,
+  "answerParseError": null,
+  "activation": {
+    "path": "inputs/activation-V2-Q4.png",
+    "sha256": "sha256:333b86b2d720aad3600ebdaabfba0ecf3dc5ceb04738982ab517e8bc6e293219",
+    "bytes": 154962
+  },
+  "sourcePacket": {
+    "path": "inputs/09-r2-V2-Q4-image-sources.md",
+    "sha256": "sha256:2049bb1b9c4761bd77f5cb1eb9d7b9935e18ea9c5ceeba52be1f9f8a4831b8ed",
+    "bytes": 3458
+  },
+  "routeRun": {
+    "startedAt": "2026-08-06T11:48:33.169Z",
+    "finishedAt": "2026-08-06T11:48:58.459Z",
+    "durationMs": 25290,
+    "exitCode": 0,
+    "executionError": null,
+    "answerText": "```json\n{\"candidates\":[\"SHILU-S12\",\"SHILU-S08\",\"SHILU-S02\",\"SHILU-S03\",\"SHILU-S01\"]}\n```",
+    "usage": {
+      "tokens": {
+        "total": 25765,
+        "input": 6,
+        "output": 977,
+        "reasoning": 0,
+        "cache": {
+          "write": 24782,
+          "read": 0
+        }
+      },
+      "cost": 0.0139566,
+      "reason": "stop"
+    },
+    "stderr": null,
+    "eventParseError": null,
+    "toolProtocolError": null,
+    "rawEvents": [
+      {
+        "type": "step_start",
+        "timestamp": 1786016921728,
+        "sessionID": "ses_02918a702ffeNGLSJSjJhbrzUB",
+        "part": {
+          "id": "prt_fd6e77878001TwiqTtTdC25kGJ",
+          "messageID": "msg_fd6e759a7001ftJRKCfM2DVhuA",
+          "sessionID": "ses_02918a702ffeNGLSJSjJhbrzUB",
+          "snapshot": "274f75e2a6d537f35468fc818c2ca31409024e62",
+          "type": "step-start"
+        }
+      },
+      {
+        "type": "text",
+        "timestamp": 1786016938346,
+        "sessionID": "ses_02918a702ffeNGLSJSjJhbrzUB",
+        "part": {
+          "id": "prt_fd6e7b67e0015dVlW7wkO5Grpn",
+          "messageID": "msg_fd6e759a7001ftJRKCfM2DVhuA",
+          "sessionID": "ses_02918a702ffeNGLSJSjJhbrzUB",
+          "type": "text",
+          "text": "```json\n{\"candidates\":[\"SHILU-S12\",\"SHILU-S08\",\"SHILU-S02\",\"SHILU-S03\",\"SHILU-S01\"]}\n```",
+          "time": {
+            "start": 1786016937598,
+            "end": 1786016938345
+          }
+        }
+      },
+      {
+        "type": "step_finish",
+        "timestamp": 1786016938420,
+        "sessionID": "ses_02918a702ffeNGLSJSjJhbrzUB",
+        "part": {
+          "id": "prt_fd6e7b9b1001h7JB79T1sRQ0vz",
+          "reason": "stop",
+          "snapshot": "274f75e2a6d537f35468fc818c2ca31409024e62",
+          "messageID": "msg_fd6e759a7001ftJRKCfM2DVhuA",
+          "sessionID": "ses_02918a702ffeNGLSJSjJhbrzUB",
+          "type": "step-finish",
+          "tokens": {
+            "total": 25765,
+            "input": 6,
+            "output": 977,
+            "reasoning": 0,
+            "cache": {
+              "write": 24782,
+              "read": 0
+            }
+          },
+          "cost": 0.0139566
+        }
+      }
+    ],
+    "rawStdout": null
+  },
+  "answerRun": {
+    "startedAt": "2026-08-06T11:48:58.460Z",
+    "finishedAt": "2026-08-06T11:49:17.161Z",
+    "durationMs": 18701,
+    "exitCode": 0,
+    "executionError": null,
+    "answerText": "{\"claims\":[{\"claimId\":\"V2-Q4-C1\",\"valueKey\":\"entry-already-persisted\",\"citations\":[{\"sourceId\":\"SHILU-S12\",\"anchorId\":\"an_922b\"}]},{\"claimId\":\"V2-Q4-C2\",\"valueKey\":\"creation-event-not-recorded\",\"citations\":[{\"sourceId\":\"SHILU-S12\",\"anchorId\":\"an_922b\"},{\"sourceId\":\"SHILU-S12\",\"anchorId\":\"an_d8e5\"}]}]}",
+    "usage": {
+      "tokens": {
+        "total": 25610,
+        "input": 6,
+        "output": 799,
+        "reasoning": 0,
+        "cache": {
+          "write": 24805,
+          "read": 0
+        }
+      },
+      "cost": 0.0136833,
+      "reason": "stop"
+    },
+    "stderr": null,
+    "eventParseError": null,
+    "toolProtocolError": null,
+    "rawEvents": [
+      {
+        "type": "step_start",
+        "timestamp": 1786016943385,
+        "sessionID": "ses_029184442ffeX2AidRBpE375Q2",
+        "part": {
+          "id": "prt_fd6e7cd14001iRgv0QyMIC39tZ",
+          "messageID": "msg_fd6e7bc5b001yq1HC37wL9Dg5T",
+          "sessionID": "ses_029184442ffeX2AidRBpE375Q2",
+          "snapshot": "f7fdbdd5a37ef52b4db24b886152a1974bf53b71",
+          "type": "step-start"
+        }
+      },
+      {
+        "type": "text",
+        "timestamp": 1786016956969,
+        "sessionID": "ses_029184442ffeX2AidRBpE375Q2",
+        "part": {
+          "id": "prt_fd6e7fae6001UjM1kPCwSFnxKP",
+          "messageID": "msg_fd6e7bc5b001yq1HC37wL9Dg5T",
+          "sessionID": "ses_029184442ffeX2AidRBpE375Q2",
+          "type": "text",
+          "text": "{\"claims\":[{\"claimId\":\"V2-Q4-C1\",\"valueKey\":\"entry-already-persisted\",\"citations\":[{\"sourceId\":\"SHILU-S12\",\"anchorId\":\"an_922b\"}]},{\"claimId\":\"V2-Q4-C2\",\"valueKey\":\"creation-event-not-recorded\",\"citations\":[{\"sourceId\":\"SHILU-S12\",\"anchorId\":\"an_922b\"},{\"sourceId\":\"SHILU-S12\",\"anchorId\":\"an_d8e5\"}]}]}",
+          "time": {
+            "start": 1786016955110,
+            "end": 1786016956967
+          }
+        }
+      },
+      {
+        "type": "step_finish",
+        "timestamp": 1786016957117,
+        "sessionID": "ses_029184442ffeX2AidRBpE375Q2",
+        "part": {
+          "id": "prt_fd6e802ba001DTPbSTdfXZuG0T",
+          "reason": "stop",
+          "snapshot": "f7fdbdd5a37ef52b4db24b886152a1974bf53b71",
+          "messageID": "msg_fd6e7bc5b001yq1HC37wL9Dg5T",
+          "sessionID": "ses_029184442ffeX2AidRBpE375Q2",
+          "type": "step-finish",
+          "tokens": {
+            "total": 25610,
+            "input": 6,
+            "output": 799,
+            "reasoning": 0,
+            "cache": {
+              "write": 24805,
+              "read": 0
+            }
+          },
+          "cost": 0.0136833
+        }
+      }
+    ],
+    "rawStdout": null
+  }
+}

@@ -1,0 +1,4 @@
+interface:
+  display_name: "Model Evaluation"
+  short_description: "Evaluate task-specific model execution capability"
+  default_prompt: "Use $model-evaluation to compare two execution profiles on representative real tasks."
