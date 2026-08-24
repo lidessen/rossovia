@@ -1,5 +1,4 @@
 import { describe, expect, test } from "bun:test";
-// @ts-expect-error app.js is the browser entrypoint; this test imports its pure attention export.
 import {
   classifyWorkbenchAttention,
   isPrincipalNeedsYouWorkItem,
@@ -96,7 +95,9 @@ const liveRunnerDecisionItem = {
  * input-pending / paused-by-another-actor item can never appear in one
  * Principal surface and not another.
  */
-function expectNavigationSurfaceConsistent(items: any[]): void {
+function expectNavigationSurfaceConsistent(
+  items: readonly { readonly id: string }[],
+): void {
   const principalIds = new Set(
     classifyWorkbenchAttention(items).principal.map((item) => item.id),
   );

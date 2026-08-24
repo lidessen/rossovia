@@ -1,7 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-// @ts-expect-error app.js is the browser entrypoint; this test imports its pure locator exports.
 import * as taskLocator from "../../gateway/ui/app.js";
 
 const {
