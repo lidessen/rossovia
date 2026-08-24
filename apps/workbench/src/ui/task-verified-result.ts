@@ -1,5 +1,6 @@
 import { realpathSync } from "node:fs";
 import { z } from "zod";
+import { isEmptyWorkCellFinalResult } from "../../../../packages/work-cell/src/contracts";
 import {
   createLocalTaskControlPlane,
   LocalTaskControlError,
@@ -391,6 +392,18 @@ function verifyOrdinaryAttemptEvidence(
       409,
       "task-drift",
       `attempt ${selector.attemptId} is no longer a recorded passed verified run`,
+    );
+  }
+  // A mechanically passed run that retained no final text, no raw steps, and
+  // no workspace diff is an empty return, not a verified Task result: the
+  // submission fails closed with no claim mutation, and the attempt is not
+  // reclassified as a failure — its recorded evidence and the Task lifecycle
+  // stay untouched.
+  if (isEmptyWorkCellFinalResult(final)) {
+    throw new TaskActionError(
+      409,
+      "task-drift",
+      `attempt ${selector.attemptId} retained a mechanically passed run with no final text, raw steps, or workspace diff; an empty return is not a verified Task result`,
     );
   }
   if (
