@@ -1,7 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-// @ts-expect-error app.js is the browser entrypoint; this test imports its pure conversation exports.
 import * as conversation from "../../gateway/ui/app.js";
 
 const {
@@ -335,8 +334,8 @@ describe("conversation composer connection text", () => {
   });
 
   test("reuses the existing connection vocabulary for all four conversation states", () => {
-    const copyStart = app.indexOf("const conversationConnectionCopy = {");
-    const copyBlock = app.slice(copyStart, app.indexOf("};", copyStart));
+    const copyStart = app.indexOf("export function conversationConnectionLabel(connection) {");
+    const copyBlock = app.slice(copyStart, app.indexOf("\n}\n", copyStart));
     expect(copyBlock).toContain('live: "已连接 · 实时"');
     expect(copyBlock).toContain('connecting: "正在连接"');
     expect(copyBlock).toContain('disconnected: "已断开 · 正在重连"');
@@ -349,7 +348,7 @@ describe("conversation composer connection text", () => {
       app.indexOf("function conversationNextStep"),
     );
     expect(composerBlock).toContain(
-      "conversationConnectionCopy[conversationState.connection]",
+      "conversationConnectionLabel(conversationState.connection)",
     );
     expect(composerBlock).not.toContain("new WebSocket");
     expect(composerBlock).not.toContain("setInterval");
