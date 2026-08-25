@@ -1,5 +1,9 @@
 # Candidate — Controlled Exploration
 
+> 现行边界（2026-08-24）：这是未采纳的 v0.5 候选研究快照。下文 `Sequence`、P-ID、
+> skill 路径和运行记录沿用历史来源，只指 v0.5 语境，不指现行哲学序列，也不取得当前
+> 条目或 skill 权威；若重开，应从 `theory/philosophy.md` 与当前证据重新形成。
+
 **Status:** incubating
 **Alternate participation:** not nominated
 **Observed in:** principle-cultivation alternate trials, agent-worker measurement lanes, Sikong route-only evaluation
