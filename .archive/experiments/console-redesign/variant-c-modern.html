@@ -1,0 +1,389 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Rossovia 工作台 · 方案 C — 明净现代</title>
+<style>
+  :root {
+    --bg: #f6f7f8;
+    --card: #ffffff;
+    --ink: #171a20;
+    --muted: #5d6572;
+    --faint: #949ba7;
+    --line: #e6e8eb;
+    --blue: #2b4bff;
+    --blue-deep: #1e38cf;
+    --blue-soft: #eef1ff;
+    --green: #12805c;
+    --green-soft: #e2f5ec;
+    --red: #d3402e;
+    --red-soft: #fdecea;
+    --radius: 12px;
+    --sans: Inter, 'Avenir Next', 'PingFang SC', 'Noto Sans SC', sans-serif;
+    --mono: ui-monospace, 'SF Mono', Menlo, monospace;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  body {
+    background: var(--bg); color: var(--ink); font-family: var(--sans);
+    font-size: 14px; line-height: 1.6; -webkit-font-smoothing: antialiased;
+    display: flex; flex-direction: column; min-height: 100vh; min-width: 320px;
+  }
+  button { font: inherit; color: inherit; cursor: pointer; }
+
+  /* ---------- 顶栏 ---------- */
+  .masthead {
+    display: flex; align-items: center; gap: 0.8rem;
+    padding: 0.7rem 1.4rem; background: var(--card);
+    border-bottom: 1px solid var(--line);
+  }
+  .masthead .mark {
+    width: 28px; height: 28px; border-radius: 8px;
+    background: linear-gradient(135deg, var(--blue), #7a5cff);
+    color: #fff; display: grid; place-items: center; font-weight: 800; font-size: 0.85rem;
+  }
+  .masthead h1 { margin: 0; font-size: 1rem; font-weight: 700; letter-spacing: -0.01em; }
+  .masthead .scope { color: var(--faint); font-size: 0.74rem; }
+  .masthead .runtime { margin-left: auto; display: flex; align-items: center; gap: 0.9rem; font-size: 0.78rem; color: var(--muted); }
+  .masthead .live {
+    display: inline-flex; align-items: center; gap: 0.4rem;
+    padding: 0.2rem 0.7rem; border-radius: 999px;
+    background: var(--green-soft); color: var(--green); font-weight: 600; font-size: 0.74rem;
+  }
+  .masthead .live::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: var(--green); }
+  .masthead time { font-family: var(--mono); font-size: 0.72rem; color: var(--faint); }
+  .masthead button {
+    background: var(--bg); border: 1px solid var(--line); border-radius: 8px;
+    padding: 0.3rem 0.8rem; font-size: 0.78rem; color: var(--muted);
+  }
+  .masthead button:hover { color: var(--blue-deep); border-color: var(--blue); }
+
+  /* ---------- 作用地址条 ---------- */
+  .target-strip {
+    display: flex; align-items: center; gap: 0.4rem;
+    padding: 0.5rem 1.4rem; border-bottom: 1px solid var(--line); background: var(--bg);
+    font-size: 0.76rem; overflow-x: auto;
+  }
+  .target-strip .seg { display: inline-flex; align-items: center; gap: 0.45rem; white-space: nowrap; }
+  .target-strip .seg span { color: var(--faint); font-size: 0.68rem; }
+  .target-strip .seg b {
+    font-weight: 600; background: var(--card); border: 1px solid var(--line);
+    padding: 0.12rem 0.6rem; border-radius: 999px;
+  }
+  .target-strip .seg b.unset { color: var(--faint); font-weight: 400; border-style: dashed; }
+  .target-strip .sep { color: var(--faint); }
+  .target-strip .state {
+    margin-left: auto; white-space: nowrap;
+    color: var(--green); font-weight: 600; font-size: 0.74rem;
+  }
+
+  /* ---------- 三栏壳 ---------- */
+  .shell { display: grid; grid-template-columns: 240px minmax(0, 1fr) 300px; flex: 1; min-height: 0; }
+
+  /* ---------- 左栏 ---------- */
+  .rail { padding: 0.9rem 0.7rem; display: flex; flex-direction: column; overflow-y: auto; }
+  .rail-group { padding: 0.4rem 0 0.6rem; }
+  .rail-label {
+    padding: 0.4rem 0.7rem 0.35rem; color: var(--faint);
+    font-size: 0.68rem; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase;
+  }
+  .rail-item {
+    display: flex; align-items: center; gap: 0.6rem; width: 100%;
+    padding: 0.45rem 0.7rem; margin-block: 1px;
+    background: none; border: 0; border-radius: 8px; text-align: left;
+    font-size: 0.86rem; color: var(--muted);
+  }
+  .rail-item small { color: var(--faint); font-size: 0.7rem; }
+  .rail-item .count {
+    margin-left: auto; font-family: var(--mono); font-size: 0.68rem;
+    background: var(--bg); border-radius: 999px; padding: 0.05rem 0.5rem; color: var(--faint);
+  }
+  .rail-item:hover { background: var(--card); color: var(--ink); }
+  .rail-item.is-active { background: var(--card); color: var(--ink); font-weight: 650; box-shadow: 0 1px 4px rgba(23,26,32,0.07); }
+  .rail-item.is-active .count { background: var(--blue-soft); color: var(--blue-deep); }
+  .rail-item .count.attention { background: var(--red-soft); color: var(--red); font-weight: 700; }
+  .rail-item .count.zero { opacity: 0.55; }
+
+  .project-item {
+    display: block; width: 100%; text-align: left; background: none; border: 0;
+    border-radius: 8px; padding: 0.5rem 0.7rem; margin-block: 1px;
+  }
+  .project-item:hover { background: var(--card); }
+  .project-item .row { display: flex; align-items: center; gap: 0.5rem; }
+  .project-item .name { font-size: 0.86rem; font-weight: 600; }
+  .project-item .dot { width: 7px; height: 7px; border-radius: 50%; }
+  .project-item .dot.ok { background: var(--green); }
+  .project-item .dot.warn { background: var(--red); box-shadow: 0 0 0 3px var(--red-soft); }
+  .project-item .badge { margin-left: auto; font-size: 0.66rem; color: var(--faint); }
+  .project-item .badge.warn { color: var(--red); font-weight: 700; }
+  .project-item .meta { color: var(--faint); font-size: 0.68rem; }
+
+  .mode-block {
+    margin-top: auto; padding: 0.8rem 0.7rem 0.4rem;
+    border-top: 1px solid var(--line);
+  }
+  .mode-relation { display: flex; align-items: center; gap: 0.55rem; font-size: 0.78rem; }
+  .mode-relation .who strong { display: block; font-size: 0.82rem; }
+  .mode-relation .who span { color: var(--faint); font-size: 0.66rem; }
+  .mode-relation .via { color: var(--faint); font-size: 0.64rem; }
+  .mode-tag {
+    display: inline-flex; margin-top: 0.55rem; padding: 0.18rem 0.65rem; border-radius: 999px;
+    background: var(--green-soft); color: var(--green); font-size: 0.7rem; font-weight: 700;
+  }
+
+  /* ---------- 主区 ---------- */
+  .main { display: flex; flex-direction: column; min-width: 0; padding: 1.2rem 1.4rem 0; }
+  .view-head {
+    display: flex; align-items: end; justify-content: space-between; gap: 1rem;
+    padding-bottom: 1.1rem;
+  }
+  .view-head .eyebrow {
+    margin: 0 0 0.3rem; color: var(--blue-deep);
+    font-size: 0.7rem; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase;
+  }
+  .view-head h2 { margin: 0; font-size: 1.5rem; font-weight: 750; letter-spacing: -0.02em; }
+  .view-head p { margin: 0.3rem 0 0; color: var(--muted); font-size: 0.84rem; max-width: 46rem; }
+  .btn-new {
+    padding: 0.55rem 1.2rem; background: var(--blue); color: #fff;
+    border: 0; border-radius: 10px; font-size: 0.84rem; font-weight: 650; white-space: nowrap;
+    box-shadow: 0 6px 18px rgba(43, 75, 255, 0.28);
+  }
+  .btn-new:hover { background: var(--blue-deep); }
+
+  .feed { flex: 1; overflow-y: auto; padding: 0.4rem 0 1.2rem; display: flex; flex-direction: column; gap: 1rem; }
+
+  .msg { max-width: 44rem; }
+  .msg .who {
+    display: flex; align-items: center; gap: 0.55rem; margin-bottom: 0.35rem;
+    font-size: 0.7rem; color: var(--faint);
+  }
+  .msg .who .avatar {
+    width: 22px; height: 22px; border-radius: 7px; display: grid; place-items: center;
+    font-size: 0.62rem; font-weight: 800; color: #fff;
+  }
+  .msg.from-agent .avatar { background: linear-gradient(135deg, var(--blue), #7a5cff); }
+  .msg.from-user .avatar { background: var(--ink); }
+  .msg .body {
+    background: var(--card); border: 1px solid var(--line); border-radius: var(--radius);
+    padding: 1rem 1.2rem; box-shadow: 0 1px 4px rgba(23,26,32,0.05);
+  }
+  .msg .body h3 { margin: 0 0 0.35rem; font-size: 1.02rem; font-weight: 700; }
+  .msg .body p { margin: 0; color: var(--muted); font-size: 0.87rem; line-height: 1.8; }
+  .msg.from-user { align-self: flex-end; }
+  .msg.from-user .who { justify-content: flex-end; }
+  .msg.from-user .body { background: var(--blue-soft); border-color: transparent; }
+  .msg.from-user .body p { color: var(--ink); }
+  .msg .statusline {
+    display: inline-flex; align-items: center; gap: 0.4rem;
+    margin-top: 0.7rem; padding: 0.25rem 0.7rem; border-radius: 999px;
+    background: var(--green-soft); color: var(--green);
+    font-size: 0.7rem; font-weight: 600; font-family: var(--mono);
+  }
+  .msg .statusline::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: var(--green); }
+  .chips { display: flex; flex-wrap: wrap; gap: 0.55rem; margin-top: 0.9rem; }
+  .chips button {
+    background: var(--bg); border: 1px solid var(--line); border-radius: 10px;
+    padding: 0.5rem 0.85rem; text-align: left; font-size: 0.8rem; font-weight: 600;
+  }
+  .chips button small { display: block; color: var(--faint); font-size: 0.68rem; font-weight: 400; }
+  .chips button:hover { border-color: var(--blue); color: var(--blue-deep); }
+
+  .composer {
+    margin: 0 -1.4rem; padding: 0.8rem 1.4rem 1rem;
+    background: var(--card); border-top: 1px solid var(--line);
+  }
+  .composer .meta {
+    display: flex; align-items: center; gap: 0.7rem; margin-bottom: 0.45rem;
+    font-size: 0.7rem; color: var(--faint);
+  }
+  .composer .meta .live { width: 7px; height: 7px; border-radius: 50%; background: var(--green); }
+  .composer .meta .hint { margin-left: auto; }
+  .composer .row { display: flex; gap: 0.7rem; }
+  .composer textarea {
+    flex: 1; resize: none; border: 1px solid var(--line); border-radius: 10px;
+    background: var(--bg); padding: 0.65rem 0.85rem; font: inherit; font-size: 0.88rem; min-height: 3.4em;
+  }
+  .composer textarea:focus { outline: 2px solid color-mix(in srgb, var(--blue) 45%, transparent); border-color: var(--blue); }
+  .composer .send {
+    align-self: stretch; padding: 0 1.6rem; background: var(--blue); color: #fff;
+    border: 0; border-radius: 10px; font-weight: 700; font-size: 0.88rem;
+    box-shadow: 0 6px 18px rgba(43, 75, 255, 0.28);
+  }
+  .composer .send:hover { background: var(--blue-deep); }
+
+  /* ---------- 右栏 ---------- */
+  .context { padding: 1.2rem 1rem 2rem; overflow-y: auto; display: flex; flex-direction: column; gap: 0.9rem; }
+  .ctx-card {
+    background: var(--card); border: 1px solid var(--line); border-radius: var(--radius);
+    padding: 0.9rem 1rem; box-shadow: 0 1px 4px rgba(23,26,32,0.04);
+  }
+  .ctx-card .eyebrow {
+    margin: 0 0 0.55rem; color: var(--faint);
+    font-size: 0.66rem; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase;
+  }
+  .ctx-card p { margin: 0; color: var(--muted); font-size: 0.78rem; line-height: 1.8; }
+  .ctx-relation { display: flex; align-items: center; gap: 0.55rem; }
+  .ctx-relation .who strong { display: block; font-size: 0.86rem; }
+  .ctx-relation .who span { color: var(--faint); font-size: 0.64rem; }
+  .ctx-relation .via { color: var(--faint); font-size: 0.62rem; }
+  .ctx-next { color: var(--ink) !important; font-weight: 550; }
+  .ctx-next em { font-style: normal; color: var(--green); }
+
+  @media (max-width: 1100px) {
+    .shell { grid-template-columns: 215px minmax(0, 1fr); }
+    .context { display: none; }
+  }
+  @media (max-width: 760px) {
+    .shell { grid-template-columns: 1fr; }
+    .rail { display: none; }
+  }
+</style>
+</head>
+<body>
+
+<header class="masthead">
+  <span class="mark" aria-hidden="true">R</span>
+  <h1>Rossovia 工作台</h1>
+  <span class="scope">多项目 · Agent 协作</span>
+  <div class="runtime">
+    <span class="live">已连接</span>
+    <time>08/23 23:28:08</time>
+    <button type="button">刷新</button>
+  </div>
+</header>
+
+<div class="target-strip" aria-label="当前作用地址">
+  <div class="seg"><span>项目</span><b>rossovia</b></div><span class="sep">→</span>
+  <div class="seg"><span>Mission</span><b>console-redesign</b></div><span class="sep">→</span>
+  <div class="seg"><span>Worktree</span><b class="unset">未选择现场</b></div><span class="sep">→</span>
+  <div class="seg"><span>Runner</span><b class="unset">—</b></div>
+  <div class="state">对话连接可用</div>
+</div>
+
+<div class="shell">
+  <aside class="rail">
+    <nav class="rail-group" aria-label="工作台视图">
+      <p class="rail-label">视图</p>
+      <button class="rail-item is-active" type="button"><span>对话</span><small>日常入口</small></button>
+      <button class="rail-item" type="button"><span>总览</span><small>项目与当前工作</small></button>
+      <button class="rail-item" type="button"><span>全部工作事项</span><span class="count">263</span></button>
+      <button class="rail-item" type="button"><span>待我处理</span><span class="count attention">15</span></button>
+      <button class="rail-item" type="button"><span>Agent 运行中</span><span class="count zero">0</span></button>
+      <button class="rail-item" type="button"><span>待 Agent 接手</span><span class="count">76</span></button>
+      <button class="rail-item" type="button"><span>失联现场</span><span class="count attention">75</span></button>
+    </nav>
+
+    <nav class="rail-group" aria-label="项目">
+      <p class="rail-label">项目 · 3</p>
+      <button class="project-item" type="button">
+        <span class="row"><span class="dot ok"></span><span class="name">essay-site</span><span class="badge">已观察</span></span>
+        <span class="meta">0 Missions</span>
+      </button>
+      <button class="project-item" type="button">
+        <span class="row"><span class="dot warn"></span><span class="name">rossovia</span><span class="badge warn">需关注</span></span>
+        <span class="meta">3 Missions</span>
+      </button>
+      <button class="project-item" type="button">
+        <span class="row"><span class="dot ok"></span><span class="name">photo-tools</span><span class="badge">已观察</span></span>
+        <span class="meta">0 Missions</span>
+      </button>
+    </nav>
+
+    <nav class="rail-group" aria-label="其他视图">
+      <button class="rail-item" type="button"><span>独立任务</span><span class="count">4</span></button>
+      <button class="rail-item" type="button"><span>已完成</span><span class="count">94</span></button>
+    </nav>
+
+    <nav class="rail-group" aria-label="系统">
+      <p class="rail-label">系统</p>
+      <button class="rail-item" type="button"><span>观察记录</span><span class="count">32</span></button>
+      <button class="rail-item" type="button"><span>设置</span></button>
+    </nav>
+
+    <div class="mode-block">
+      <p class="rail-label" style="padding-top:0">运行模式</p>
+      <div class="mode-relation">
+        <div class="who"><span>你</span><strong>Codex</strong></div>
+        <span class="via">──监督──▶</span>
+        <div class="who"><span>Agent 系统</span><strong>Rossovia</strong></div>
+      </div>
+      <span class="mode-tag">有监督</span>
+    </div>
+  </aside>
+
+  <main class="main">
+    <header class="view-head">
+      <div>
+        <p class="eyebrow">Conversation entry</p>
+        <h2>对话</h2>
+        <p>发布与纠正任务、观察执行；从这里精确中断回复或停止已观察的执行载体。</p>
+      </div>
+      <button class="btn-new" type="button">新建任务</button>
+    </header>
+
+    <div class="feed" role="log" aria-label="对话事件流">
+      <div class="msg from-agent">
+        <div class="who"><span class="avatar">R</span><span>Rossovia · 受监督对话入口</span></div>
+        <div class="body">
+          <h3>向 Agent 系统提出事情</h3>
+          <p>发布任务、纠正方向、观察协调回复与执行进展。消息记录由本机 Workbench journal 持久化；浏览器只保留对话 ID、光标与草稿。</p>
+          <div class="chips">
+            <button type="button">查看待办<small>当前有哪些事项需要我处理？</small></button>
+            <button type="button">观察执行<small>请说明当前执行进展与下一步。</small></button>
+            <button type="button">纠正任务<small>纠正正在进行的任务：……</small></button>
+          </div>
+        </div>
+      </div>
+
+      <div class="msg from-user">
+        <div class="who"><span>23:21</span><span class="avatar">你</span></div>
+        <div class="body">
+          <p>帮我把 essay-site 首页的构建错误修掉，完成后告诉我。</p>
+        </div>
+      </div>
+
+      <div class="msg from-agent">
+        <div class="who"><span class="avatar">R</span><span>Rossovia · 23:22</span></div>
+        <div class="body">
+          <p>已建立任务「修复 essay-site 首页构建错误」，下一责任方：Agent。正在定位构建错误，完成后会把结果声明与证据引用交回给你验收。</p>
+          <p class="statusline">进行中 · task-run · 00:04:12</p>
+        </div>
+      </div>
+    </div>
+
+    <form class="composer">
+      <div class="meta">
+        <span class="live" aria-hidden="true"></span>
+        <span>发给 Agent 系统 · 对话连接：可用</span>
+        <span class="hint">Enter 发送 · Shift+Enter 换行</span>
+      </div>
+      <div class="row">
+        <textarea placeholder="说你想完成或纠正的事。Enter 发送，Shift+Enter 换行。"></textarea>
+        <button class="send" type="submit">发送</button>
+      </div>
+    </form>
+  </main>
+
+  <aside class="context">
+    <section class="ctx-card">
+      <p class="eyebrow">监督关系</p>
+      <div class="ctx-relation">
+        <div class="who"><span>你</span><strong>Codex</strong></div>
+        <span class="via">──监督──▶</span>
+        <div class="who"><span>Agent 系统</span><strong>Rossovia</strong></div>
+      </div>
+    </section>
+    <section class="ctx-card">
+      <p class="eyebrow">下一步</p>
+      <p class="ctx-next">对话连接可用：<em>描述要完成的任务即可</em>。草稿保留，不会自动重发。</p>
+    </section>
+    <section class="ctx-card">
+      <p class="eyebrow">浏览器边界</p>
+      <p>消息记录由本机 Workbench journal 持久化；浏览器只保留对话 ID、已应用的光标、草稿与展示焦点。任务状态、执行证据与验收始终以各自 canonical 所有者为准。</p>
+    </section>
+  </aside>
+</div>
+
+</body>
+</html>

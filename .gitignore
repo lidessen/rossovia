@@ -1,3 +1,14 @@
 .DS_Store
 /outputs/
 node_modules/
+
+# Local tool state and generated browser traces
+/.playwright-cli/
+/.reasonix/
+/reasonix.toml
+/.vercel/
+
+# Generated experiment build state
+/experiments/**/.vinext/
+/experiments/**/.wrangler/
+/experiments/**/dist/

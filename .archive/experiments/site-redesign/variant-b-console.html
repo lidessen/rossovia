@@ -1,0 +1,313 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Rossovia · 方案 B — 暗夜证据台</title>
+<style>
+  :root {
+    --bg: #0e120f;
+    --bg-raised: #151a16;
+    --bg-panel: #10140f;
+    --ink: #e3e8df;
+    --muted: #8d978c;
+    --line: #263029;
+    --line-bright: #37443a;
+    --green: #8fd6a8;
+    --amber: #e0b76a;
+    --red: #d96a52;
+    --sans: 'Avenir Next', 'PingFang SC', 'Hiragino Sans GB', sans-serif;
+    --mono: ui-monospace, 'SF Mono', 'SFMono-Regular', Menlo, monospace;
+  }
+  * { box-sizing: border-box; }
+  html { background: var(--bg); color: var(--ink); font-family: var(--sans); }
+  body {
+    margin: 0; min-width: 320px;
+    background-image:
+      linear-gradient(var(--line) 1px, transparent 1px),
+      linear-gradient(90deg, var(--line) 1px, transparent 1px);
+    background-size: 72px 72px;
+    background-position: center top;
+  }
+  a { color: inherit; text-underline-offset: 0.25em; }
+  a:focus-visible { outline: 2px solid var(--green); outline-offset: 3px; }
+
+  .shell { width: min(100% - 2.5rem, 1280px); margin-inline: auto; }
+
+  /* ---------- header：状态条 ---------- */
+  .site-header {
+    display: flex; align-items: center; justify-content: space-between;
+    min-height: 64px; border-bottom: 1px solid var(--line-bright);
+    font-family: var(--mono); font-size: 0.78rem;
+  }
+  .wordmark { display: flex; align-items: center; gap: 0.7rem; text-decoration: none; }
+  .wordmark .dot {
+    width: 9px; height: 9px; border-radius: 50%; background: var(--green);
+    box-shadow: 0 0 10px color-mix(in srgb, var(--green) 70%, transparent);
+  }
+  .wordmark .name { color: var(--ink); letter-spacing: 0.04em; }
+  .wordmark .tag { color: var(--muted); }
+  .site-nav { display: flex; align-items: center; gap: 1.8rem; }
+  .site-nav a { color: var(--muted); text-decoration: none; }
+  .site-nav a::before { content: './'; color: var(--line-bright); }
+  .site-nav a:hover { color: var(--green); }
+  .site-nav a:hover::before { color: var(--green); }
+
+  .eyebrow {
+    margin: 0 0 1.3rem; font-family: var(--mono); font-size: 0.72rem;
+    letter-spacing: 0.1em; color: var(--amber);
+  }
+  .eyebrow::before { content: '▸ '; color: var(--green); }
+
+  h1, h2 { font-weight: 600; letter-spacing: -0.01em; }
+
+  /* ---------- hero ---------- */
+  .hero {
+    display: grid; grid-template-columns: minmax(0, 7fr) minmax(320px, 5fr);
+    gap: clamp(2rem, 5vw, 5rem); align-items: center;
+    padding-block: clamp(4rem, 9vw, 7.5rem);
+  }
+  .hero h1 {
+    margin: 0; max-width: 14ch;
+    font-size: clamp(2.6rem, 5.2vw, 4.9rem); line-height: 1.14;
+  }
+  .hero h1 em {
+    font-style: normal; color: var(--green);
+    background: color-mix(in srgb, var(--green) 12%, transparent);
+    padding-inline: 0.12em; box-shadow: inset 0 -2px 0 var(--green);
+  }
+  .hero-lede {
+    max-width: 40rem; margin: 2rem 0 0; color: var(--muted);
+    font-size: 1.02rem; line-height: 1.95;
+  }
+  .hero-actions { display: flex; flex-wrap: wrap; gap: 1rem 1.4rem; margin-top: 2.4rem; }
+  .btn-primary, .btn-text {
+    font-family: var(--mono); font-size: 0.85rem; text-decoration: none;
+    padding: 0.85rem 1.4rem; border: 1px solid var(--line-bright);
+  }
+  .btn-primary {
+    background: var(--green); border-color: var(--green); color: #0c120d; font-weight: 700;
+  }
+  .btn-primary::before { content: '$ '; }
+  .btn-primary:hover { background: #a6e4bc; }
+  .btn-text { color: var(--muted); }
+  .btn-text::before { content: '# '; color: var(--line-bright); }
+  .btn-text:hover { color: var(--ink); border-color: var(--muted); }
+
+  /* 工作台：运行记录面板 */
+  .workbench {
+    background: var(--bg-panel); border: 1px solid var(--line-bright);
+    box-shadow: 0 24px 60px rgba(0, 0, 0, 0.45);
+  }
+  .workbench .bar {
+    display: flex; align-items: center; gap: 0.5rem;
+    padding: 0.7rem 1rem; border-bottom: 1px solid var(--line-bright);
+    font-family: var(--mono); font-size: 0.68rem; color: var(--muted); letter-spacing: 0.08em;
+  }
+  .workbench .bar i { width: 8px; height: 8px; border-radius: 50%; background: var(--line-bright); }
+  .workbench .bar i:first-child { background: var(--red); }
+  .workbench .bar span { margin-left: auto; }
+  .workbench ol { margin: 0; padding: 0.6rem 0; list-style: none; }
+  .workbench li {
+    display: grid; grid-template-columns: 4.6rem 1fr auto; gap: 1rem; align-items: baseline;
+    padding: 1.05rem 1.2rem; font-family: var(--mono);
+  }
+  .workbench li + li { border-top: 1px dashed var(--line); }
+  .workbench li:hover { background: var(--bg-raised); }
+  .workbench .no { color: var(--green); font-size: 0.72rem; }
+  .workbench strong { color: var(--ink); font-size: 1.05rem; font-weight: 600; letter-spacing: 0.03em; }
+  .workbench small { color: var(--muted); font-size: 0.78rem; }
+
+  /* ---------- 分节 ---------- */
+  .split {
+    display: grid; grid-template-columns: minmax(0, 6fr) minmax(0, 5fr);
+    gap: clamp(2rem, 5vw, 5rem);
+    padding-block: clamp(4.5rem, 8vw, 7rem); border-top: 1px solid var(--line-bright);
+  }
+  .split h2 { margin: 0; font-size: clamp(1.9rem, 3.6vw, 3.4rem); line-height: 1.2; }
+  .split .body { align-self: end; color: var(--muted); font-size: 1rem; line-height: 1.9; }
+  .split .body p { margin: 0; }
+  .split .body a {
+    display: inline-block; margin-top: 1.2rem; font-family: var(--mono); font-size: 0.82rem;
+    color: var(--green); text-decoration: none;
+  }
+  .split .body a::before { content: '→ '; }
+  .split .body a:hover { text-decoration: underline; }
+
+  /* ---------- 方法：日志表 ---------- */
+  .methods { padding-block: clamp(4.5rem, 8vw, 7rem); border-top: 1px solid var(--line-bright); }
+  .methods-intro {
+    display: grid; grid-template-columns: 1.3fr 0.7fr; gap: 3rem; align-items: end; margin-bottom: 2.6rem;
+  }
+  .methods-intro h2 { margin: 0; font-size: clamp(1.9rem, 3.4vw, 3.2rem); line-height: 1.2; }
+  .methods-intro > p { margin: 0; color: var(--muted); line-height: 1.75; font-size: 0.95rem; }
+  .methods-intro > p strong {
+    display: block; font-family: var(--mono); font-size: 3rem; font-weight: 700; color: var(--amber);
+  }
+  .method-list { margin: 0; padding: 0; list-style: none; border: 1px solid var(--line-bright); background: var(--bg-panel); }
+  .method-list li {
+    display: grid; grid-template-columns: 6.4rem minmax(0, 1fr) auto;
+    gap: clamp(1rem, 3vw, 2.4rem); align-items: baseline; padding: 1.4rem 1.4rem;
+  }
+  .method-list li + li { border-top: 1px solid var(--line); }
+  .method-list li:hover { background: var(--bg-raised); }
+  .method-list .no { font-family: var(--mono); font-size: 0.72rem; color: var(--amber); }
+  .method-list h3 {
+    margin: 0 0 0.4rem; font-family: var(--mono); font-size: 1.05rem; font-weight: 600;
+    color: var(--green); letter-spacing: 0.02em;
+  }
+  .method-list p { margin: 0; color: var(--muted); line-height: 1.7; font-size: 0.92rem; }
+  .method-list a {
+    font-family: var(--mono); font-size: 0.72rem; color: var(--muted);
+    text-decoration: none; white-space: nowrap;
+  }
+  .method-list a:hover { color: var(--green); }
+  .method-list a::before { content: '[ '; color: var(--line-bright); }
+  .method-list a::after { content: ' ]'; color: var(--line-bright); }
+  .all-methods {
+    display: inline-block; margin-top: 1.6rem; font-family: var(--mono); font-size: 0.82rem;
+    color: var(--green); text-decoration: none;
+  }
+  .all-methods::before { content: '→ '; }
+  .all-methods:hover { text-decoration: underline; }
+
+  /* ---------- 原则序列 ---------- */
+  .sequence blockquote {
+    margin: 2.2rem 0 0; padding: 1.2rem 1.4rem;
+    border: 1px solid var(--line-bright); border-left: 3px solid var(--amber);
+    background: var(--bg-panel);
+    font-family: var(--mono); font-size: 1.05rem; color: var(--amber);
+  }
+  .sequence blockquote::before { content: '> '; color: var(--green); }
+
+  /* ---------- 证明义务 ---------- */
+  .boundary {
+    padding: clamp(4rem, 7vw, 6rem) clamp(1.4rem, 5vw, 4rem);
+    border: 1px solid var(--amber);
+    background:
+      repeating-linear-gradient(-45deg, transparent 0 14px, color-mix(in srgb, var(--amber) 5%, transparent) 14px 15px);
+    margin-bottom: clamp(4rem, 7vw, 6rem);
+  }
+  .boundary .eyebrow { color: var(--amber); }
+  .boundary h2 { margin: 0; max-width: 20ch; font-size: clamp(1.7rem, 3.2vw, 3rem); line-height: 1.25; }
+  .boundary p {
+    max-width: 44rem; margin: 1.8rem 0 0 auto;
+    color: var(--muted); font-size: 1rem; line-height: 1.9;
+  }
+
+  /* ---------- footer ---------- */
+  footer {
+    display: flex; min-height: 84px; align-items: center; justify-content: space-between; gap: 1.5rem;
+    border-top: 1px solid var(--line-bright);
+    font-family: var(--mono); font-size: 0.74rem; color: var(--muted);
+  }
+  footer .brand strong { color: var(--ink); font-weight: 600; }
+  .footer-links { display: flex; gap: 1.6rem; }
+  .footer-links a { color: var(--muted); text-decoration: none; }
+  .footer-links a:hover { color: var(--green); }
+
+  @media (max-width: 900px) {
+    .hero, .split, .methods-intro { grid-template-columns: 1fr; }
+    .hero { gap: 3rem; }
+    .split { gap: 1.4rem; }
+  }
+  @media (max-width: 620px) {
+    .method-list li { grid-template-columns: minmax(0, 1fr); gap: 0.3rem; }
+    .workbench li { grid-template-columns: 3.4rem 1fr; }
+    .workbench small { grid-column: 2; }
+    footer { flex-direction: column; align-items: flex-start; justify-content: center; padding-block: 1.2rem; }
+  }
+</style>
+</head>
+<body>
+<div class="shell">
+  <header class="site-header">
+    <a class="wordmark" href="#">
+      <span class="dot" aria-hidden="true"></span>
+      <span class="name">rossovia</span>
+      <span class="tag">// 开放的 AI 生产方法</span>
+    </a>
+    <nav class="site-nav" aria-label="主导航">
+      <a href="#">docs</a><a href="#">methods</a><a href="#">github</a>
+    </nav>
+  </header>
+
+  <main>
+    <section class="hero">
+      <div class="hero-copy">
+        <p class="eyebrow">开放方法 · 有界任务 · 可追溯证据</p>
+        <h1>让 AI 的生产能力<br />成为<em>共同的工具</em></h1>
+        <p class="hero-lede">这里不是模型榜单，也不是不透明的 AI 平台。这个仓库把原则、方法、执行单元和验证证据放在一起，让普通人和小团队能够检查、修复、替换并继续改进自己的工作系统。</p>
+        <div class="hero-actions">
+          <a class="btn-primary" href="#">选择一个方法 →</a>
+          <a class="btn-text" href="#">阅读建构使命</a>
+        </div>
+      </div>
+      <div class="workbench" aria-label="原则、方法、实践与证据构成的开放工作台">
+        <p class="bar"><i></i><i></i><i></i><span>COMMON WORKBENCH · RUNNING</span></p>
+        <ol>
+          <li><span class="no">[01]</span><strong>Principles</strong><small>判断从何而来</small></li>
+          <li><span class="no">[02]</span><strong>Methods</strong><small>判断如何行动</small></li>
+          <li><span class="no">[03]</span><strong>Practice</strong><small>行动如何受检验</small></li>
+          <li><span class="no">[04]</span><strong>Evidence</strong><small>经验如何被继承</small></li>
+        </ol>
+      </div>
+    </section>
+
+    <section class="split">
+      <div class="head">
+        <p class="eyebrow">01 / 从具体问题开始</p>
+        <h2>先从一个真实问题开始</h2>
+      </div>
+      <div class="body">
+        <p>这个仓库中的活动技能可以分别安装。先选择一个与当前问题相符的方法，在真实任务中观察它是否改变行动；任何模型、供应商和运行时依赖都应当保持可见、有限并可替换。</p>
+        <a href="#">查看使用入口</a>
+      </div>
+    </section>
+
+    <section class="methods">
+      <div class="methods-intro">
+        <div>
+          <p class="eyebrow">02 / 当前方法</p>
+          <h2>每个技能只负责一种可辨认的判断</h2>
+        </div>
+        <p><strong>29</strong> 个活动技能由同一原则序列表达，但不共享一个万能工作流。</p>
+      </div>
+      <ol class="method-list">
+        <li><span class="no">SKILL-001</span><div><h3>visual-design</h3><p>从内容、受众与项目方向出发设计真实界面，而不是套用调色板。</p></div><a href="#">open</a></li>
+        <li><span class="no">SKILL-002</span><div><h3>code-review</h3><p>在接受或合并之前，审查提议变更中会改变决定的缺陷。</p></div><a href="#">open</a></li>
+        <li><span class="no">SKILL-003</span><div><h3>principle-cultivation</h3><p>看管项目的可错原则谱系：研究、候选、评审与人类裁决。</p></div><a href="#">open</a></li>
+        <li><span class="no">SKILL-004</span><div><h3>skill-engineering</h3><p>设计、重写、评审并测试能改进重复性 Agent 判断的技能。</p></div><a href="#">open</a></li>
+        <li><span class="no">SKILL-005</span><div><h3>context-engineering</h3><p>设计并验证与决策相关的项目信息如何经真实运行时抵达 Agent。</p></div><a href="#">open</a></li>
+      </ol>
+      <a class="all-methods" href="#">浏览全部 29 个方法</a>
+    </section>
+
+    <section class="split sequence">
+      <div class="head">
+        <p class="eyebrow">03 / 唯一语义根</p>
+        <h2>原则不是墙上的口号。它要在行动中留下差异。</h2>
+      </div>
+      <div class="body">
+        <p>Principle Sequence 每行只保留一个稳定原则。解释、技能和项目规则都是下游表达；能够从源重建的页面，只是投影。</p>
+        <blockquote>实践—认识—再实践</blockquote>
+        <a href="#">阅读完整序列</a>
+      </div>
+    </section>
+
+    <section class="boundary">
+      <p class="eyebrow">04 / 当前证明义务</p>
+      <h2>先在有界生产任务上，证明更经济的开放组合能够交付可检查的结果。</h2>
+      <p>这是一项需要持续证据的长期工作，不是已经兑现的模型优越性声明。人保留目的、数据和验收权；运行时保留成本、失败和修复路径。</p>
+    </section>
+  </main>
+
+  <footer>
+    <div class="brand"><strong>rossovia</strong> · <span>名称可修订，使命与来源边界不随名称漂移</span></div>
+    <div class="footer-links">
+      <a href="#">docs</a><a href="#">source</a><a href="#">mit-license</a>
+    </div>
+  </footer>
+</div>
+</body>
+</html>
