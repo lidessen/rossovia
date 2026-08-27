@@ -49,6 +49,10 @@ source capture → candidate definition → matched consumer/applicability condi
 - **证据重连使局部贡献回到整体**：child 返回的是带 standing 的局部主张，不是自动事实；压缩可删冗余轨迹，不能切断决定性来源、限定和效果证据。Main 综合不是拼接报告或多数投票，而是恢复关系；嵌套委派不改变这项义务。
 - **比例**：局部发现不取得全局主次；新近、具体、写得最长或被多个 Agent 重复报告不因此成为主线（P09）。过度委派同样校正：协调对象成本超过原工作就没有净贡献。
 
+### Agent 工作原语与工作流形式（v0.5 研究）
+
+最小真实原语是 **Agent as tool**：父 Agent 把一个有界任务发到新的隔离 context，收到紧凑结果，父保留重建责任；一次模型步骤内的独立调用可以并行；child 可以再形成有界贡献而不获得父的外层 authority——拓扑深度是自适应组织选择，不是新 authority 层。与之区分的形式：**handoff**（选中 Agent 接管会话/图状态，用于面向用户的路由）、**fixed parallel batch**（已知独立分解，运行时并发分发）、**dynamic workflow**（程序依据先前结果选择后续调用，用于数据依赖的 map-reduce/序列）、**shared Agent team**（独立会话共享任务消息，通常有 lead，状态与 token 成本更高）。"Agent as tool"不解决 handoff、共享团队或模型自写 workflow 的问题，不要塌缩成同一个原语。
+
 ## Skill 形成（skill-formation）
 
 **skill 载体是在相关任务中被选择性加载、用来表达某个 skill 方法并改变 Agent 重复判断或行动的载体。**
@@ -74,13 +78,14 @@ source capture → candidate definition → matched consumer/applicability condi
 - **有边界的改善关系**：从可复现 baseline 产生 candidate，判断是否改善目标关系，保持硬约束并留下可重建证据。P03 规定实践与认识往复（只有改变下一判断的观察才构成迭代）；P15 规定检验手段（回到有匹配对照、可观察结果和相称评审的实践）；P16 规定检验全程时点（低风险可逆对象可记 N/A 并说明理由）。
 - **净改善不是总分**：目标 outcome、边界/回归、证据质量、时间与 token、协调等待、维护和外部效果分别记录；无共同单位不得在结果出现后临时调权。结果是带硬约束的向量。
 - **change hypothesis + acceptance card**：每轮在治疗前冻结 acceptance card（接受者、硬约束、重大退化定义、最小证据、成本预算、观察窗口、fresh holdout 规则）；结果出现后不能为通过而改写，必须改就开新 round 或置 uncertain。
+- **测试预期与偏差归因**：测试/实验设计必须预期先行——positive（应发生）、boundary（不应发生）、regression（须保留）、对照差异（预期在哪个维度、朝什么方向有差异，也写明预期无差异的维度）四类预期在测试前冻结，结果出现后不改。结果与预期偏差必须先归因再处置，两条路径分开：① **测试设计问题**——fixture 未触发目标机制、输入无压力、观测缺失、对照不成立（机制从未被检验）→ 修 fixture/观测/对照后重测；② **假设问题**——机制无效、载体表达未内化方法、环境失真 → 沿血统 `P → theory → skill → activation` 回看后改组合/理论重测。归因需要证据（是输入没压力，还是行为确实相同），不能猜；归因不了保持 uncertain，不硬结。来源：首轮对照回看（FB-2026-08-27-001）；与 CORR-002 同源——载体对照若没制造或观察目标压力，不能回答机制是否有效。
 - **证据集合**：positive（目标行为应发生）、boundary/nearest-owner（不应发生或应转交）、regression（已支持行为须保留）、holdout（作者未见，只用于独立泛化）。四类回答不同问题，不能互相替代；被反复调参的集合降为 development evidence。
 - **污染与证据降级**：模型/来源 hash/任务/harness/权限/工作区不一致、control 共享被改的 mutable 组件、隔离破坏、fixture 在看见结果后改写、holdout 被消耗 → 只能报已观察行为或 uncertain，先修 workflow/fixture/config 再重跑。
 - **Owner 路由**：主要缺口送到最小 owner（theory/skill/fixture/workflow/runtime/base），不因 correction 名称自动改理论；上游 P 变化沿 `P → theory → skill/fixture/rubric/旧结论` 血统传播 stale 并重生成。
 - **处置集合**：`adopt / adapt-and-retest / retain-baseline / no-proposal / rollback / uncertain`——证据处置，不是 runtime 状态或必经门。
 - **流程本身也必须被检验**：区分真实 outcome、process 与 balancing cost；"更严格/记录更多/用了更多 Agent"是 process 观察，不是 outcome 改善。
 - **收敛**：回到冻结的 acceptance card（观察窗口、fresh holdout 规则），不是轮数或所有人同意；未知未解决时闭环暂停，不因文件完成或时间耗尽自动消失。
-- **Principal correction 是来源有界的改进输入**：必须保留 raw、来源与 authority、指向的对象与 revision；语气、频率或自报不能单独取得 Principal 身份。
+- **Principal correction 是来源有界的改进输入**：必须保留 raw、来源与 authority、指向的对象与 revision；语气、频率或自报不能单独取得 Principal 身份。审计还发现一个常见闭环缺口：correction 被当作评论、额外要求或局部文字修订，而不是改变既有假设与下游有效性的来源事件。完整闭环链是 `Principal correction → assumption delta → owner routing → stale propagation → re-evaluation → accepted disposition`；现有 acceptance 只回答"候选是否满足当前 card/理论"，必须同时回答"Principal 是否改变了 card、对象边界、owner 或 record standing"。
 
 ### Owner-facing progress 与设身处地（owner-facing-progress）
 
@@ -101,6 +106,53 @@ source capture → candidate definition → matched consumer/applicability condi
 - **关系面**（按风险检查，不每次机械填）：上游语义、权威与责任、横向边界、下游使用、时间与纠偏、证据与验证。
 - **work map 是系统关系的投影**：Plan/Task/Todo 是同一 work map 的不同关系视图；检查下一行动能否从 authority/依赖/允许效果/完成观察/返回关系中重建。
 - **三种主张严格区分**：局部观察（candidate 在指定范围产生预期变化）≠ 关系支持（未破坏已声明不变量或残余未知已保留）≠ 系统采用（owner 已采纳且影响范围/回退/观察/接受 standing 可回读）。局部 review 不能自动取得全局 acceptance。
+
+## Agent 工作流与失败定位
+
+### Agent Work Model：用关系定位失败（v0.5 方法）
+
+定位工作流失败，不强行加通用生命周期。一个 agent 只有在"人的意图 × 项目真相 × 方法 × 能力 × 验证"在各自能影响工作的时刻都接上时才能做好；输出附近的可见失败可能由链条更早处引起。六个关系面（各自有证据、归属 surface 与常见错误修复）：
+
+| 关系面 | 检查什么 | 常见错误修复 |
+|---|---|---|
+| Intent & authority | 用户请求、已接受决定、scope、审批 | 让 agent 推断 policy 或 acceptance |
+| Discovery | 仓库入口指令、skill 元数据、运行时发现 trace | 给未被发现的文件加更多 prose |
+| Guidance | 选中的 skill、prompt、直接引用、加载的 context | 把全部 doctrine 复制进常开 context |
+| Action & capability | 工具 schema、CLI help、adapter、权限、执行 trace | 绕过缺失/笨拙的能力空谈 |
+| Verification | 接受条件、测试、review 证据、提交边界 | 把 agent 输出或浅单测当 acceptance |
+| Handoff & recovery | 变更文件、决定记录、issue/PR、work log | 造第二个任务板或永久协调者 |
+
+**诊断门**：① Observed or inferred？（保留原始症状，因果主张等路径支持）② Truth or delivery？（治理内容缺失时交付改动修不了）③ Guidance or capability？（重复指令造不出工具/强制不了 schema）④ Capability or acceptance？（工具能返回证据，不能决定自己的工作满足项目权威）⑤ Source or projection？（生成索引/摘要/仪表板是可重建访问，除非另有治理）⑥ Local or recurring？（一次性修正留在任务里；只有必须重复或存续的决定才造持久 agent 面）。**最小干预**：优先修拥有该差距的 skill/指令/工具/验证/handoff；只有不存在能表达重复门的 owner、runtime 缺能力或任务真正跨会话时，才升级。
+
+### 接收者工作环境：四耦合关系（v0.5 harness theory）
+
+Agent 工作环境是接收者能理解有界贡献、只用真实能力、观察结果并返回可重连证据的最小局部世界；prompt 只是该世界的一个投影，不是环境整体、也不是能力或 authority 来源。构造四个耦合关系（不变成 schema 或 preflight）：
+
+- **cognitive**：具体对象与动作、必要概念、权威来源与 revision、与整体的关系、下游使用、明确 non-goals；
+- **attention**：现在必须显著的、可按需加载的、以及不能改变本动作的父历史/runtime 细节（应留在外）；
+- **action**：实际 workspace、模型可见工具、宿主能力、资源包络、允许效果、被扣留的决定、停止行为；
+- **evidence**：可观察活动与产物、范围化机械检查、声明的未知、语义审查与接受 owner、可重建返回。
+
+### 最小工作流回路与工作流审计
+
+项目工作流的操作形态（默认回路，不是每项都走完的九步表单）：记住输入 → 恢复问题与场景 → 判断复杂度和必要准备 → 形成最小 work map/Todo → 选择直接、顺序或并行贡献 → 实践一个最小可观察动作 → 观察结果、失败和未知 → 回顾、纠偏或回落修剪 → 结算当前成果并保留回返条件 → checkpoint 后选择下一波。一步、低风险、可逆动作可以直接完成；多步骤、多任务、有依赖/交接/验证/长时执行时必须外部化 work map。
+
+三个工作流原则：
+- **实践不等待正式化**：Draft/trial/formal/idea 是帮助人恢复使用关系的描述，不是每项工作都必须经过的固定状态机；只要说明当前问题、适用场景、允许效果和返回观察，就可以先实践，结果再决定回写/试行/形成 skill/研究/回退。
+- **实践优先不是无边界试错**：实践前仍要恢复最小问题关系（真实问题、目标场景、主要矛盾、允许效果、不可逆面、观察方式和返回位置）。
+- **工作流本身也要被实践**：每次有界工作同时观察是否找到正确 authority、选了足够小的工作单元、值得准备工具或委派、保留未知与失败、真正改变下一步判断、流程成本是否超过收益。没有改变判断的步骤/字段/record/角色，不因"流程完整"而保留。审计结论：已有"提出假设—冻结对照—独立复核—处置—记录"防护是研究候选，不是行为验证闭环；建议把防护串成可跳步状态机，并用 workflow 自身结果证明流程，而不是再叠一层"更严格"的文档。
+
+### 编排与吞吐候选
+
+最值得验证的不是增加 Agent 数，而是把执行面收敛为：**单层、读多写少、依赖感知、一次有界 fan-out、一次显式 fan-in、指定 authority/owner 单写**。速度假设：Main 预检/路由 → 冻结 source revision 与共同 contract → 独立只读 lane 有界并行 → Main 冻结 candidate/effect surface → producer lane 在隔离效果面上并行 → 机械检查与独立 semantic review 并行 → Main 重连、冲突裁决、acceptance/projection 顺序执行。只有节省的分支工作量超过 fan-out/重复 context/排队/交接/fan-in/返工成本时，并行才是提速；并行 Agent 数不是目标变量。**唤醒机会与主动判断分开计量**：wake 只让系统看到机会，收益必须来自更快的有价值进展，不来自 wake 数/lane 数/候选数；用 `T_useful / C_total / Q_guard` 判断净收益。调度、批次、队列、取消、容量、锁、恢复或单写者保证属于外层 system/orchestrator/runtime，不进 WorkCell core。
+
+### Agent 主观能动性（可观察行为构念）
+
+主观能动性暂作可观察行为构念：Agent 能否从当前目标和现实中产生有价值的下一候选、采取有界行动、并根据结果改变后续判断。不声称意识/感受/内在欲望/心理主体性；人类动机理论只是可能的设计类比。能动行为依赖的关系：accepted purpose/current objective + reality observation 与 open gaps + available affordances 与 bounded discretion + progress/competence feedback + consequence visibility 与 downstream relation + experience memory 与 correction。**不要解决成什么**：不是在 prompt 写"主动一点"；不是无限扩大授权或替 owner 设目标；不是把未完成事项放常驻 todo、更多轮询或更多 Agent；不是把输出更长、工具调用更多、"我发现问题了"或自我反思文字更多当成功。当前研究已结算为有限 owner-gated hold，无 named system consumer 时不继续扩张。
+
+### 整体工作协调（whole-work relation）
+
+整体目标包含多个 item、owner、依赖、证据与阶段边界时，需要持续恢复整体关系并据此选择当前 bounded wave 的组成、拓扑、综合与 checkpoint：整体目标/硬约束/non-goals/canonical authority/接受关系是什么；各 item 当前 standing、依赖是否成立；哪些贡献直接/顺序/并行/等待/ no-proposal；局部结果回到整体后改变了哪个义务、依赖、阶段出口或下一 wave；何时做整体 checkpoint、合并 projection、重排 branch、settle 或 route。局部结果只有在说明其影响的整体义务、下游使用、证据覆盖与未决关系后，才改变 whole-work projection；局部等待/成功/发现不得误写成全局状态。"缺一个可独立选择加载的 method carrier"仍是推断，尚未接受。
 
 ## 设计认知（design/）
 
