@@ -1,11 +1,15 @@
 # Agent 组合方案：AGENTS.md + Skills + 工具
 
 > 状态：方案草案，未实施。
-> 版本：v3（v0 → v1：新增"应用 → 集中迭代 → 理论演进"闭环，移除候选区，采纳 stable/unstable + 版本机制；
+> 版本：v4（v0 → v1：新增"应用 → 集中迭代 → 理论演进"闭环，移除候选区，采纳 stable/unstable + 版本机制；
 > v1 → v2：设计修剪——工具 9→5 合并，method-evolution 与 4.2 迭代协议合一，纠偏闭环归入 practice-cycle，
 > focus refresh 并入 resume；
 > v2 → v3：新增 4.4 基础集成测试（测试手册给主 agent，证据分层 L1/L2/L3），观察机制按宿主适配，
-> 集中索引见 `design/observability/`）。
+> 集中索引见 `design/observability/`；
+> v3 → v4：4.4 拆分为「系统自检（smoke，Phase 1，无 fixture）」+「效果验证（受控 eval，Phase 2，用 fixture）」——
+> 不人为构造场景测效果作为第一阶段；fixture 归受控实验；4.4.2 展开给主 agent 的完整方法步骤
+> （委派 sub agent、L1/L2/L3 收证据、三层评估、对照回归、处置）。
+> v4 → v5：4.4.2 方法主体拆出为独立手册 `design/test-manual.md`（单一语义源，设计文档只引用）。
 > 依据：`theory/` 最新整理内容。
 > 目标：让 agent 走得更远（长任务持续推进 + checkpoint 回返）、更独立（默认自治 + 事后纠偏）、
 > 主观能动性更强（从目标与现实产生有价值的下一候选、采取有界行动、按结果改变后续判断）。
@@ -98,36 +102,25 @@ harness 文档（详细版）→ `notes/`（记录）→ `.archive/`（只读）
 - **provenance**：每条主张一行注记指向来源（thoughts 条目 id、应用观察、纠正、eval 结果），证据链可回读。
 - 理论进化 = 版本的积累 + 个别条目的稳定度标记；无候选区、无状态机。
 
-### 4.4 基础集成测试（测试手册，给主 agent）
+### 4.4 系统自检与效果验证
 
-**定位**：验证组合（AGENTS.md + skills + 工具）是否让 agent 独立走完真实任务并返回可重连证据；
-组合有实质变更时运行（每次迭代结算前，即 4.2 第 3 步"变更与验证"的受控部分）。
-这是"实践是检验真理的唯一标准"（P15）的落地，也是 eval 脚手架（第 5 章第三批）的种子。
+#### 4.4.1 系统自检（smoke test，Phase 1，不需要 fixture）
 
-**角色分工**：主 agent 是编排者与评估者；sub agent 是隔离冷启动的执行者（Agent as tool，无上下文，
-只给任务 + 项目文件——同时测发现层与路由层）；执行者不评估自己（producer/reviewer 分离）。
+组合自身完整性的机械验证——不构造任何测试场景，只证明系统健康、可加载、一致。组合有实质变更时运行（每次迭代结算前）。
 
-**步骤**（主 agent 按手册执行）：
-1. 冻结环境：组合版本快照、fixture 集冻结。
-2. 选场景：2-3 个代表性端到端 fixture（想法处理 / 概念设计 / 迭代纠偏）+ 1 个回归集（已支持行为）。
-3. 委派执行：每个 fixture 作为有界任务发给隔离 sub agent（贡献契约：对象/允许效果/返回 trace；
-   事实操作一律走工具，便于观测）。
-4. 收证据：从观测层与 sub agent 回执收集执行记录（读了什么、加载了什么 skill、产物、声明的未知）。
-5. 三层评估：机械（产物格式/契约，脚本断言）→ 行为（路由与 skill 加载是否符合预期，观测 trace）→
-   语义（目标关系是否真的改变、返回可否重连，主 agent 判断；关键项可再委派独立评审）。
-6. 对照与回归：裸 agent vs 组合（matched-improvement 的来源）；回归集确认已支持行为未丢。
-7. 处置：adopt / adapt-and-retest / retain-baseline / rollback / uncertain → 结果进证据链追踪，与版本绑定。
-8. 防污染：fixture 结果出现后不改、holdout 场景主 agent 未见、记录随版本快照。
+| 检查面 | 手段 | 验证什么 |
+|---|---|---|
+| 发现层 | 宿主诊断（如 `reasonix doctor capabilities`） | AGENTS.md 被作为 instruction 加载；skills 全部被发现（winner） |
+| 一致性 | `tools/check.py` | skill frontmatter 合法；AGENTS.md 路由表引用的 skill 存在；条目编号无重复；无 stale 引用 |
+| 工具可用 | `tools/version.py status`、register/track 可调用 | 工具可运行、基线未漂移 |
+| 版本基线 | `tools/version.py list` | 有冻结基线、可回退 |
 
-**证据分层**（行为证据的可靠度排序，判定只能建立在 L1/L2 之上）：
-- **L1 宿主观测**（优先，机械证据，确定性观察者）：工具调用 trace、事件记录、会话日志。
-- **L2 产物证据**：文件写入、git diff（确定性但间接）。
-- **L3 agent 自报**（回退，降级）：无观测可用时让 agent 生成 trace，但必须标注 `self-report`、
-  证据等级降级，且与 L1/L2 交叉验证；自报永远只作补充，不作行为证据。
+自检全部通过 = 组合完整（format-valid + 发现层成立）；自检失败先修，不进入效果验证或结算。
 
-**观察机制按宿主适配**：不同 harness 工具的观测方式不同（hooks、会话日志、插件接口等），
-具体机制不写进本手册——每工具一篇文档，集中索引见 `design/observability/`；未探明的工具标
-`unknown`，实际使用该 harness 时现场探明后补文档。
+#### 4.4.2 效果验证（受控 eval，Phase 2，用 fixture）
+
+测"组合是否让 agent 独立走完真实任务并返回可重连证据"。**fixture 是人为构造的受控测试输入，属于受控实验（001C/004A）**——在系统自检通过、有真实行为可测之后再引入，不提前构造。
+完整手册（给主 agent：委派 sub agent、L1/L2/L3 收证据、三层评估、对照回归、处置）见 **`design/test-manual.md`**（本手册是 4.4.2 的方法主体，单一语义源，内容只在那里维护）。
 
 ## 5. 工具（工欲善其事，007A：按问题复杂度准备；不造与既有载体重复的工具）
 
@@ -141,7 +134,7 @@ harness 文档（详细版）→ `notes/`（记录）→ `.archive/`（只读）
 - **证据链追踪**：一张表记录四层证据（semantic handoff / carrier handoff / activation observation / adoption evidence）；skill 激活日志与应用义务追踪是其输入与字段，不单独设工具。
 
 ### 第三批：Phase 2 再做
-- **eval 脚手架**：baseline vs treatment 对照、holdout 管理（001C/004A）；落地形态与方法见 4.4，等有真实行为可测再建。
+- **eval 脚手架**：baseline vs treatment 对照、holdout 管理（001C/004A）；落地形态与方法见 4.4.2（fixture 归受控 eval，不提前构造），等有真实行为可测再建。
 
 ## 6. 边界（不做什么）
 

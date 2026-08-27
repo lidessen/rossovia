@@ -1,0 +1,18 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": ".*",
+        "command": "mkdir -p /Users/lidessen/workspaces/skills/.reasonix/hooks && echo \"[$(date +%FT%T)] PostToolUse\" >> /Users/lidessen/workspaces/skills/.reasonix/hooks/tooluse.log",
+        "timeout": 5000
+      }
+    ],
+    "SubagentStop": [
+      {
+        "matcher": "*",
+        "command": "mkdir -p /Users/lidessen/workspaces/skills/.reasonix/hooks && echo \"[$(date +%FT%T)] SubagentStop\" >> /Users/lidessen/workspaces/skills/.reasonix/hooks/subagent.log",
+        "timeout": 30000
+      }
+    ]
+  }
+}
