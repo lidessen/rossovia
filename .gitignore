@@ -4,8 +4,7 @@ node_modules/
 
 # Local tool state and generated browser traces
 /.playwright-cli/
-/.reasonix/*
-!/.reasonix/settings.json
+/.reasonix/
 /reasonix.toml
 /.vercel/
 

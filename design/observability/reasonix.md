@@ -2,6 +2,19 @@
 
 > 状态：已探明（2026-08-27，依据内置 `reasonix-guide` skill）。用于 `design/agent-stack.md` 4.4 集成测试的 L1 观测。
 
+## 使用纪律：按需启用，不持久化
+
+**hooks 是测试时临时举起的观测装置，不是常驻监控**（007A：工具 readiness 由问题复杂度决定；mechanism-design-review：Origin 是真实压力）。默认不配置 hooks；需要 L1 观测时：
+
+1. 测试开始前，把 hooks 配置临时写入 `<workspace>/.reasonix/settings.json`（schema 见下）；
+2. **重启 Reasonix**（hooks 在 session boot 加载；当前会话不生效）；
+3. 测试结束后**移除配置**（恢复无 settings.json），日志目录（`.reasonix/hooks/`）清理或按需保留。
+
+启用时的纪律：
+- **matcher 收窄**到测试相关工具（如 `task:subagent`、`run_skill`），不用 `.*` 无差别记录；
+- 日志限量（hook 命令只追加必要信息；测试后截断/清理，不无限累积）；
+- 只在与测试直接相关的会话启用，不与日常会话共存。
+
 ## 观察机制：Hooks（11 个事件）
 
 配置位置：项目 `<workspace>/.reasonix/settings.json`（自动加载）或全局 `<Reasonix home>/settings.json`。
