@@ -71,7 +71,11 @@ def check_routes():
     for ref in refs:
         if ref not in existing:
             problems.append(f"AGENTS.md 路由表引用缺失的 skill: {ref}")
-    note(f"[check] 路由引用: {len(refs)} 个引用，{'全部存在' if not [p for p in problems if '路由表' in p] else '见问题'}")
+    # 反向：未挂载检查——存在的 skill 是否被路由表引用（G6：skill 挂载盲区）
+    for d in sorted(existing):
+        if d not in refs:
+            problems.append(f"skill 未被 AGENTS.md 路由表挂载: {d}")
+    note(f"[check] 路由引用: {len(refs)} 个引用，{'全部存在且全部挂载' if not [p for p in problems if '路由' in p or '挂载' in p] else '见问题'}")
 
 
 # 3. 编号冲突

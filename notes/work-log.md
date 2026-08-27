@@ -1,7 +1,7 @@
 # Work Log
 
 > 手动记录设计与实验日志：设计决策与理由、实验的假设/步骤/观察/结果/结论、进展与复盘。
-> 与 `thinking-log.md` 的区别：thinking-log 由 `.agents/skills/0_scribe` 自动记录对话中的偶发思考（原始想法、碎片化、忠实原话）；本文件是主动整理过的记录，按时间追加，可以包含结论与下一步。
+> 与 `thinking-log.md` 的区别：thinking-log 由 `.agents/skills/planning-inbox`（capture 模式）自动记录对话中的偶发思考（原始想法、碎片化、忠实原话）；本文件是主动整理过的记录，按时间追加，可以包含结论与下一步。
 
 ## 记录建议
 

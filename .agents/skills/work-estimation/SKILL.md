@@ -28,4 +28,4 @@ description: 在换算成 token/时间/金钱前，恢复最小必要工作图�
 
 ## 返回
 
-estimate：最小工作图、承诺/发现分界、粒度依据、下一 owner。
+estimate：最小工作图、承诺/发现分界、粒度依据、下一 owner。下一 owner 需要编排/委派（规模/类型判断、角色组合、贡献契约）时 → `work-orchestration`。

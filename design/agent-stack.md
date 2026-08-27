@@ -25,37 +25,25 @@ harness 文档（详细版）→ `notes/`（记录）→ `.archive/`（只读）
 1. **目的与边界**：accepted purpose、objective、non-goals、canonical authority、接受权归属（能动性的"目的锚"）。
 2. **自治契约（核心）**：默认自主处理局部事务；必须请示四类事——改变整体方向 / 价值判断 / 权限关系 / 共享基线 / 重大不可逆后果；请示形成最短选择题、只暂停受影响分支；小错走事后纠偏，不逐点请示。
 3. **work map 约定**：多步/多任务默认外部化 Plan/Todo（Plan 保整体义务、Todo 保当前可行动义务）；发现新依赖/未知先更新关系再继续；checkpoint 即把 work map 留好，恢复时读取（回返条件随状态保存）。
-4. **运行机制锚点**：开始/恢复/角色交接/checkpoint 时做 resume——从 work map 恢复目标/约束/决定/进度，并从 canonical 源重选承重方法（focus refresh 是 resume 的子动作）；偏差走 practice-cycle 纠偏（发现 → 限制 → 区分 → 最小修正 → 隔离验证 → 沉淀或回退）。
+4. **运行机制锚点**：开始/恢复/角色交接/checkpoint 时做 resume——从 work map 恢复目标/约束/决定/进度，并从 canonical 源重选承重方法（focus refresh 是 resume 的子动作）；偏差走 feedback-loop 单次回返纠偏（发现 → 限制 → 区分 → 最小修正 → 隔离验证 → 沉淀或回退）。
 5. **skill 索引与触发**：指向 skills、每个 skill 何时加载、关键参考文档位置（不把全部 doctrine 复制进常开 context）。
 6. **禁止写**：不写"要主动/要更积极"口号；不承诺文字无法执行的东西（强制/权限/唤醒属 runtime/base）；不建第二任务板或常驻协调者。
 
-## 2. Skills 设计（四组 11 个 + 可选 2）
+## 2. Skills 设计（7 个主题 skill）
 
-### 自主推进组
-- `planning-inbox`：低摩擦接住任意想法/观察/待办，保真 capture、capture 与 process 分离，不偷换成承诺（open gaps 来源）。
+- `expression`：表达主题——语义对象处理链：概念定义（对象证据→四探针→定义→指称）→ 载体选择（四项使用关系→最小真实形式）→ 表达（面向人写作 / 面向 Agent 表达；双受众 reference）。吸收 concept-articulation、form-selection、human-writing、agent-expression。
+- `feedback-loop`：反馈迭代主题——capture/登记（保真记录 + 分类路由）→ 单次回返（settle/continue/route/uncertain）→ 集中迭代（checkpoint：冻结 baseline/收拢路由/变更验证/结算/版本，方法主体即 4.2）。吸收 planning-inbox、practice-cycle、method-evolution。
 - `work-estimation`：恢复最小工作图与分支，只估算到能区分当前决策的粒度。
-- `practice-cycle`：从一次真实实践结果判断下一最小实践，用反观察修订理解（反馈改变判断的闭环）。
-- `method-evolution`：执行集中迭代协议（方法主体见 4.2）——checkpoint 回顾总结、肯定好的改进差的，滚动更新方法体系，保留 baseline/rollback/lineage（009A）。
-
-### 边界与协同组
+- `work-orchestration`：主 agent 组织与委派——规模/类型→角色组合、委派（六准入/贡献契约/拓扑/证据重连/委托 prompt 最小化）、收集后丢弃者筛选→整合者→Main 综合；评审人委派（reviewer-styles）与 Review 模式。吸收 agent-delegation、harness-review。
 - `owner-facing-progress`：判断是否值得打扰 owner，设身处地形成最短 decision package，保留选择权继续独立工作（自治的边界控制）。
-- `agent-delegation`：判断真实有界贡献是否/如何交给另一 Agent，表达贡献边界并把带 standing 的结果重连回整体。
-
-### 判断与表达组
-- `concept-articulation`：从证据形成足以区分最近邻的概念与正式指称，先定义后命名。
-- `form-selection`：为来源有界的语义对象选最小真实形式（载体判断）。
-- `agent-expression`：把任务/方法表达成 Agent 能正确判断、行动并返回的内容。
-- （可选）`human-writing`、`dual-audience-expression`：面向人/双受众的写作与同步。
-
-### 沉淀与克制组
-- `skill-formation`：判断反复出现的差距是否沉淀为可选择性加载的 skill，管生命周期（创建/改写/拆分/合并/降级/删除）。
 - `mechanism-design-review`：加机制前判断真实对象与最小处置，防止把行为模式机制化。
+- `skill-formation`：判断反复出现的差距是否沉淀为可选择性加载的 skill，管生命周期（创建/改写/拆分/合并/降级/删除）。
 
 ## 3. 组合关键机制
 
 1. **分层选择性加载**：AGENTS.md（宪章，极短常驻）→ skills（按触发加载）→ harness 文档（详细版）；base/runtime 管强制与权限；防承重方法被稀释。
-2. **默认自治 + 事后纠偏作总开关**：AGENTS.md 给自治权限与请示标准，`owner-facing-progress` 判边界，`practice-cycle` 跑纠偏闭环，`skill-formation`/`method-evolution` 沉淀经验——自治是可观察、可限制、可回退的循环，不是权限膨胀。
-3. **能动性三回路**：目的锚（AGENTS.md）→ 行动回路（`work-estimation` 选下一步、`agent-delegation` 有界分派）→ 反馈回路（`practice-cycle` 用结果改变后续判断）→ 记忆回路（`skill-formation`/`method-evolution` 沉淀 correction）→ 回到目的。
+2. **默认自治 + 事后纠偏作总开关**：AGENTS.md 给自治权限与请示标准，`owner-facing-progress` 判边界，`feedback-loop` 单次回返跑纠偏闭环，`skill-formation`/`feedback-loop` 集中迭代沉淀经验——自治是可观察、可限制、可回退的循环，不是权限膨胀。
+3. **能动性三回路**：目的锚（AGENTS.md）→ 行动回路（`work-estimation` 选下一步、`work-orchestration` 有界分派）→ 反馈回路（`feedback-loop` 单次回返用结果改变后续判断）→ 记忆回路（`skill-formation`/`feedback-loop` 集中迭代沉淀 correction）→ 回到目的。
 4. **work map 外部化驱动**：Plan 保义务、Todo 保行动、checkpoint 保回返；例外仅限一步完成、低风险可逆——长任务连续性的机制解。
 5. **四层证据链**防"处理了没走到最后"（012A/013A）：semantic handoff → carrier handoff → activation observation → adoption evidence；`archive-*` 不吞应用义务。
 6. **表达纪律贯穿**：面向 Agent 的表达显露改变判断和行动的条件（来源状态/允许效果/验收/返回）；承重语义先于 token 经济；单一语义源；最小真实形式。
@@ -81,7 +69,7 @@ harness 文档（详细版）→ `notes/`（记录）→ `.archive/`（只读）
 `correction → assumption delta → owner routing → stale propagation → re-evaluation → accepted disposition`。
 必须保留 raw、来源与 authority、指向的对象与 revision；不因语气/频率/自报取得 Principal 身份。
 
-### 4.2 集中迭代协议（即 method-evolution 的方法主体）
+### 4.2 集中迭代协议（即 feedback-loop 集中迭代模式的方法主体）
 
 一轮迭代（由 checkpoint 触发，语义边界决定，不是固定轮数）：
 

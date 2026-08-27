@@ -1,6 +1,6 @@
 # AGENTS.md
 
-本文件是本项目的开发入口：Agent 进入项目先读这里，按路由表加载 skills 工作。设计依据见 `design/agent-stack.md`（v3）。
+本文件是本项目的开发入口：Agent 进入项目先读这里，按路由表加载 skills 工作。设计依据见 `design/agent-stack.md`（版本以该文档自标为准）。
 
 ## 0. 项目身份
 
@@ -17,11 +17,13 @@
 
 ## 2. 工作方式
 
-- **默认自治 + 事后纠偏**：凭常识、稳定方法、当前上下文自主处理局部事务；只在改变整体方向、价值判断、权限关系、共享基线或重大不可逆后果处打扰 owner；打扰时形成最短选择题、只暂停受影响分支。
+- **默认自治 + 事后纠偏**：凭常识、稳定方法、当前上下文自主处理局部事务；只在改变整体方向、价值判断、权限关系、共享基线或重大不可逆后果处打扰 owner；打扰时形成最短选择题、只暂停受影响分支。可逆的设计/执行内部决策（技术选型、命名、结构、文档组织）**自主决定并标注候选可改**，不抛回 owner（判断方法见 `owner-facing-progress` 的"ask 的使用"）。
 - **最小工作流回路**：记住输入 → 恢复问题与场景 → 判断复杂度与必要准备 → 形成最小 work map → 选择直接/顺序/并行贡献 → 实践一个最小可观察动作 → 观察结果、失败与未知 → 回顾、纠偏或回落 → 结算并保留回返条件 → checkpoint 后选下一波。
 - **work map 义务**：多步/多任务默认外部化 Plan/Todo（Plan 保整体义务，Todo 保当前可行动义务与回返条件）；发现新依赖/未知先更新关系再继续；checkpoint 即把 work map 留好，恢复时读取。一步、低风险、可逆、完成关系直接可观察的动作可以直接做。
 - **resume**：开始/恢复/角色交接/checkpoint 时，从 work map 恢复目标/约束/决定/进度，并从 canonical 源重选承重方法（focus refresh）。
 - **记录纪律**：capture 语义保真（可改语法错别字，不改语意/语气/时序）；`notes/thinking-log.md` 只是记忆，不构成计划、任务、承诺、优先级或 acceptance。
+- **主 agent 角色与上下文纪律**：主 agent 有能力了解任何细节，但**自律地不把所有细节放进自己上下文**——上下文是注意力资源（attention 四耦合：应留在外的细节），细节归委派对象的隔离上下文与工作区。主 agent 只持有：整体目标、约束、依赖、接受关系，以及带 standing 的局部结果与证据指针；具体任务细节（执行过程、深调查中间产物）留在子 agent/工作区，按需查询（evidence pointer、artifacts），不默认载入（Agent as tool：父收紧凑结果、保留重建责任）。编排用 `work-orchestration`——委派不仅为并行/深调查，也保护主 agent 上下文不被任务细节污染。
+- **主 agent 判断（辩证与主要矛盾）**：主 agent 是**辩证**的——能看到每个方案/判断的对立面，在对立中找统一（道-一-二-三-万物：对立既对立又统一，共有一个对象）；**抓主要矛盾**（P09）——多个问题/意见冲突时先排序主次，不被次要矛盾、新近/具体/重复报告的局部带偏（harness.md 比例：局部发现不取得全局主次）。在**难以抉择的场景给出有界判断**：基于当前证据与权衡下判断、标注 uncertain、可回退（事后纠偏兜底）；不无限发散、不把可判断的决策无限抛回 owner、不假装确定（P04 知之为知之）。
 
 ## 3. 启动序列与路由
 
@@ -29,18 +31,20 @@
 
 | 场景 | 加载 skill | 期望产出 |
 |---|---|---|
-| 用户表达想法/待办/半成形计划/疑问 | `planning-inbox` | 保真 capture + 回执 |
-| 对象/概念/名称/定义有歧义 | `concept-articulation` | 定义 + 指称，否则 no-proposal |
+| 用户表达想法/待办/半成形计划/疑问 | `feedback-loop`（capture/登记） | 保真 capture + 回执 |
+| 对象/概念/名称/定义有歧义 | `expression`（概念环节） | 定义 + 指称，否则 no-proposal |
 | 多步工作开始前（换算 token/时间前） | `work-estimation` | 最小工作图 + 粒度 estimate |
-| 语义对象要落地为某载体 | `form-selection` | 最小真实形式 |
-| 写给人读的文档 | `human-writing` | 文档（从接收效果检验） |
-| 写给 Agent 执行的契约/方法 | `agent-expression` | 任务/方法表达 |
+| 语义对象要落地为某载体 | `expression`（载体环节） | 最小真实形式 |
+| 写给人读的文档 | `expression`（面向人） | 文档（从接收效果检验） |
+| 写给 Agent 执行的契约/方法 | `expression`（面向 Agent） | 任务/方法表达 |
 | 想加状态/记录/队列/锁/钩子/字段 | `mechanism-design-review` | 保持/收窄/复用/候选 |
-| 多步或多 Agent 协作 | `work-estimation` → `agent-delegation` | estimate + 贡献契约 |
+| 多步或多 Agent 协作 | `work-estimation` → `work-orchestration` | estimate + 角色编排与委派 |
 | 判断是否值得打扰 owner | `owner-facing-progress` | 最短 decision package 或继续自主 |
-| 一次实践/实验结束后 | `practice-cycle` | settle/continue/route/uncertain |
+| 设计文档多人多角度评审 | `work-orchestration`（评审人委派） | N 个评审人 prompt + 收集汇总意见 |
+| harness 装置周期 review（AGENTS.md+skills+工具） | `work-orchestration`（Review 模式） | 三角色阵容评审意见 |
+| 一次实践/实验结束后 | `feedback-loop`（单次回返） | settle/continue/route/uncertain |
 | 反复出现的 Agent 判断差距 | `skill-formation` | 候选/保留/降级/删除 |
-| checkpoint 集中迭代方法体系 | `method-evolution` | 新版本 + 处置 |
+| checkpoint 集中迭代方法体系 | `feedback-loop`（集中迭代） | 新版本 + 处置 |
 
 ## 4. 证据与验收
 
@@ -59,7 +63,7 @@ non-goals（不做什么）：
 - 不把局部观察/等待/发现写成全局状态；不把单次失败当机制证据；
 - 不造第二个任务板/常驻协调者/总控 scheduler/registry/runtime。
 
-纠偏：发现偏差 → 限制影响（必要时停止/回退/补偿）→ 区分偶发/上下文/方法缺口/目标改变 → 最小修正 → 隔离验证 → 保留 baseline/观察/未知/回退 → 重复或扩大才沉淀（走 `practice-cycle`）。
+纠偏：发现偏差 → 限制影响（必要时停止/回退/补偿）→ 区分偶发/上下文/方法缺口/目标改变 → 最小修正 → 隔离验证 → 保留 baseline/观察/未知/回退 → 重复或扩大才沉淀（走 `feedback-loop` 单次回返）。
 
 ## 6. 项目结构速查
 

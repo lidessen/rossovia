@@ -1,6 +1,6 @@
 # Thinking Log
 
-> 本文件由 `.agents/skills/0_scribe` 追加维护，忠实记录对话中用户偶发的思考片段。
+> 本文件由 `.agents/skills/planning-inbox`（capture 模式）追加维护，忠实记录对话中用户偶发的思考片段。
 > 它是原始想法的保留（记忆），不是任务队列、Todo、Plan、goal、执行 ledger 或 acceptance source。
 > 手动整理的设计/实验日志见 `notes/work-log.md`。
 

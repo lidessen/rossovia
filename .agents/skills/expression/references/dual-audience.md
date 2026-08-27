@@ -1,6 +1,6 @@
 # Dual-Audience Expression（双受众表达 reference）
 
-供 `human-writing` 与 `agent-expression` 共用的低频参考（design/agent-stack.md：不单列 skill）。当同一语义核需要同时面向人与 Agent 时使用。
+供 `expression`（面向人 / 面向 Agent 两模式）共用的低频参考。当同一语义核需要同时面向人与 Agent 时使用。
 
 ## 准入
 
