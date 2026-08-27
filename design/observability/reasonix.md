@@ -1,10 +1,26 @@
 # Observability: Reasonix
 
-> 状态：已探明（2026-08-27，依据内置 `reasonix-guide` skill）。用于 `design/agent-stack.md` 4.4 集成测试的 L1 观测。
+> 状态：已探明（2026-08-27，依据内置 `reasonix-guide` skill 与 `reasonix run --help` 实测）。用于 `design/agent-stack.md` 4.4 测试的 L1 观测。
+
+## 观测方式分层（首选参数化，hooks 是备选）
+
+**L1 观测首选 `reasonix run` 参数化**（按需、用后即弃、不持久化、不碰项目配置）：
+
+| 参数 | 作用 | 测试用途 |
+|---|---|---|
+| `--trajectory <path>` | 把本次运行的完整事件轨迹（tool calls, reasoning, decisions）追加写入 JSONL | **L1 首选**：工具调用 trace + 推理/决策，测试后文件即证据 |
+| `--events-jsonl` | 结构化事件流输出到 stdout | 实时事件观测 |
+| `--metrics <path>` | 写入 token/cache/cost 摘要 | 成本证据 |
+| `--ablate <list>` | 关闭指定子系统（evidence/planner/subagent/retrieval/compaction） | harness 子系统对照臂（受控实验） |
+
+用法：`reasonix run --trajectory /tmp/run-traj.jsonl --permission-mode auto <task>`。
+**环境限制（已实测）**：本环境 `reasonix run` 需要 provider key（`OPENCODE_GO_API_KEY`），当前缺失 → 参数化观测待配置 key 后验证实际输出；在配置前，L1 走 hooks 或 L2/L3。
+
+**hooks 是备选**（交互会话内的观测）：需要 L1 且不能走 `run` 时，按下面「使用纪律」临时启用。
 
 ## 使用纪律：按需启用，不持久化
 
-**hooks 是测试时临时举起的观测装置，不是常驻监控**（007A：工具 readiness 由问题复杂度决定；mechanism-design-review：Origin 是真实压力）。默认不配置 hooks；需要 L1 观测时：
+**观测装置不常驻**（007A：工具 readiness 由问题复杂度决定；mechanism-design-review：Origin 是真实压力）。默认不配置 hooks；需要 hooks 时：
 
 1. 测试开始前，把 hooks 配置临时写入 `<workspace>/.reasonix/settings.json`（schema 见下）；
 2. **重启 Reasonix**（hooks 在 session boot 加载；当前会话不生效）；

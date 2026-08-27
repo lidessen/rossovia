@@ -63,7 +63,7 @@
 
 | 层 | 来源 | 说明 |
 |---|---|---|
-| L1 宿主观测（优先） | hooks/日志：工具调用 trace、skill 加载调用、sub agent 回执 | 机械证据，确定性观察者；按宿主适配，见 `design/observability/` |
+| L1 宿主观测（优先） | `reasonix run --trajectory`（首选，参数化）或 hooks/日志：工具调用 trace、skill 加载、sub agent 回执 | 机械证据，确定性观察者；按宿主适配，见 `design/observability/` |
 | L2 产物证据 | 文件写入、git diff | 确定性但间接 |
 | L3 agent 自报（回退） | sub agent 返回的 trace | 标注 `self-report`，仅补充，与 L1/L2 交叉验证 |
 
