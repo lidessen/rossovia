@@ -61,3 +61,17 @@
 - ref: sa_20260827_111129
 - note: check 全过、version freeze/list/status 正常、track/register --help 可调用（behavior-observed）
 
+### EV-2026-08-27-007
+- level: semantic
+- object: 任务内 owner 交互：默认自主+事后纠偏，请示为异步例外（workcell-service.md 决策 3/11）
+- date: 2026-08-27
+- ref: theory/harness.md default-autonomy-with-correction / owner-facing-progress
+- note: 用户确认装置目的即尽可能自主决策；决策方向从『二选一 owner 通道』改为『自主优先 + 异步例外 + 事后纠偏』
+
+### EV-2026-08-27-008
+- level: semantic
+- object: WorkCell 形态确认：单节点持续运行服务 + harness 上游构造（workcell-service.md 决策 3/11/§3 修正）
+- date: 2026-08-27
+- ref: 用户澄清（2026-08-27）
+- note: 修正 EV-2026-08-27-007 方向：任务内自主规则属上游 harness 而非服务属性；服务不内置 harness 决策、不设任务内 owner 通道
+
