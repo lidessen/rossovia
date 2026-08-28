@@ -34,7 +34,7 @@ harness 文档（详细版）→ `notes/`（记录）→ `.archive/`（只读）
 - `expression`：表达主题——语义对象处理链：概念定义（对象证据→四探针→定义→指称）→ 载体选择（四项使用关系→最小真实形式）→ 表达（面向人写作 / 面向 Agent 表达；双受众 reference）。吸收 concept-articulation、form-selection、human-writing、agent-expression。
 - `feedback-loop`：反馈迭代主题——capture/登记（保真记录 + 分类路由）→ 单次回返（settle/continue/route/uncertain）→ 集中迭代（checkpoint：冻结 baseline/收拢路由/变更验证/结算/版本，方法主体即 4.2）。吸收 planning-inbox、practice-cycle、method-evolution。
 - `work-estimation`：恢复最小工作图与分支，只估算到能区分当前决策的粒度。
-- `work-orchestration`：主 agent 组织与委派——规模/类型→角色组合、委派（六准入/贡献契约/拓扑/证据重连/委托 prompt 最小化）、收集后丢弃者筛选→整合者→Main 综合；评审人委派（reviewer-styles）与 Review 模式。吸收 agent-delegation、harness-review。
+- `work-orchestration`：主 agent 组织与委派——规模/类型→角色或工作动作；分治的分解/整合、委派（六准入/贡献契约/拓扑/证据重连/委托 prompt 最小化）、按需要筛选后由 Main 重连整体；评审人委派（reviewer-styles）与 Review 模式。吸收 agent-delegation、harness-review。
 - `owner-facing-progress`：判断是否值得打扰 owner，设身处地形成最短 decision package，保留选择权继续独立工作（自治的边界控制）。
 - `mechanism-design-review`：加机制前判断真实对象与最小处置，防止把行为模式机制化。
 - `skill-formation`：判断反复出现的差距是否沉淀为可选择性加载的 skill，管生命周期（创建/改写/拆分/合并/降级/删除）。
