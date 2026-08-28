@@ -1,8 +1,0 @@
-{
-  "$schema": "https://openapi.vercel.sh/vercel.json",
-  "framework": "astro",
-  "installCommand": "npm --prefix site ci",
-  "buildCommand": "npm --prefix site run build",
-  "outputDirectory": "site/dist",
-  "cleanUrls": true
-}

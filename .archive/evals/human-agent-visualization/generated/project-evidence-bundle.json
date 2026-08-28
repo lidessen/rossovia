@@ -1,0 +1,261 @@
+{
+  "version": "human-agent-visualization.project-evidence-bundle.v1",
+  "builder": {
+    "id": "local-project-lens-builder",
+    "revision": "mvp-r3"
+  },
+  "generatedAt": "2026-08-11T09:41:45.102Z",
+  "subject": {
+    "id": "skills",
+    "root": "/Users/lidessen/workspaces/skills",
+    "revision": "c41561db2d2295acec3b59c5581131e09408a02f+tree:1d404b9b8ccecb0ed12b33963774be9158ad78a08b0d9050fe231776a0592e16",
+    "dirty": true,
+    "intent": "understand",
+    "audience": "项目负责人",
+    "question": "每次修改后，这个项目的目标、主要系统、责任边界、实现状态和设计偏差分别是什么？",
+    "focusSources": [
+      "README.md",
+      "design/DESIGN.md",
+      "design/AUTONOMOUS-COLLECTIVE-INTELLIGENCE.md",
+      "principles/SEQUENCE.md",
+      "experiments/human-agent-visualization/DESIGN.md",
+      "operations/workbench/README.md",
+      "packages/work-cell/README.md"
+    ],
+    "proposedVerifications": []
+  },
+  "sources": [
+    {
+      "id": "source:README.md",
+      "kind": "declared-document",
+      "sourceRef": "README.md",
+      "revision": "sha256:7fa0e120cfed66f4b07a601dd3c1375603c5b1ca2c3e6c10fcb42c59b8d6e462",
+      "excerpt": "# Rossovia — Skills\n\n[简体中文](README.zh-CN.md)\n\n> The current methods repository for **Rossovia**, a project that makes\n> productive AI a common, open, replaceable capability.\n\nRossovia is the [current, revisable project name](design/FOUNDING-IDENTITY.md); this `rossovia` repository remains\none of its working surfaces. It contains [agent skills](https://agentskills.io) and an\nexperimental Work Cell for AI-assisted development. It is one working surface,\nnot the whole project, a model provider, or an opaque AI platform. Its semantic\nroot is the one-line [Principle Sequence](principles/SEQUENCE.md); each P-ID has\na living, source-bound [interpretation](principles/interpretations/) and each\nskill is a context-specific expression of selected entries.\n\nThe project's [generative system model](design/decisions/043-generative-system-and-human-governed-autonomy.md)\nrelates those parts as `reality and practice → principles → general methods →\nsituated formations → concrete work and effects`, with verified practice\nreturning to cognition and revision. Its long direction is operational autonomy\nunder human governance: Agents may eventually sense, propose, organize, and\nexecute within accepted envelopes, but they do not grant themselves purpose,\nauthority, fact admission, or consequential acceptance.\n\nIts [founding mandate](design/FOUNDING-MANDATE.md) is to make productive AI a\nwidely accessible, open, replaceable common capability: enable ordinary people\nto use economical open-model engineering systems on bounded production work,\nwith concrete evidence rather than dependence on opaque platform claims. Its\nethical boundary is liberation rather than extraction: human and AI capability\nmust not be organized as an unaccountable source of exploitation.\n\nStart from the [founding mandate](design/FOUNDING-MANDATE.md) to understand why\nthe project exists, the [operating protocol](design/operations/OPERATING-PROTOCOL.md)\nto see how human-authorized work proceeds, or the active skills below to use a\nspecific method.\n\n## Ways to use Rossovia\n\n- Develop Rossovia itself through this repository's full operating and evidence\n  system.\n- Install one self-contained Skill into another project for a specific method.\n- Enter this checkout with a coding agent as the Main-Agent work entry for\n  other projects. The agent may use the current harness's native sub-agents\n  directly; this does not require initializing Rossovia Workbench.\n\nFor the optional persistent Workbench path, ask the agent directly:\n\n```text\nInitialize the Rossovia workbench. My workspace root is /path/to/workspaces.\nAdd /",
+      "digest": "sha256:79189f4c61f0eef9bc6fabe155f082f69672a8fd5295b145b9555b0eca0b6f2c"
+    },
+    {
+      "id": "source:README.zh-CN.md",
+      "kind": "declared-document",
+      "sourceRef": "README.zh-CN.md",
+      "revision": "sha256:44f3147c810ab73a4c2232bde3d415fbaad6f21cba778175ff787f5239b2e923",
+      "excerpt": "# Rossovia — Skills\n\n[English](README.md)\n\n> **Rossovia** 致力于让生产性 AI 成为共同、开放、可替换的能力；\n> 本仓库收录其当前方法。\n\n“Rossovia”是[当前采用、仍可修订的项目名称](design/FOUNDING-IDENTITY.md)；`rossovia` 仓库仍只是它的一个\n工作界面。本仓库包含用于 AI 辅助开发的 [Agent Skills](https://agentskills.io) 和实验性\nWork Cell。它只是项目的一个工作界面，而不是整个项目、模型提供商或不透明的\nAI 平台。它的语义根是单行的[原则序列](principles/SEQUENCE.md)；每个 P-ID\n都有一份持续演进、来源可追溯的[解读](principles/interpretations/)，每个\nskill 则是在具体语境中对所选条目的表达。\n\n项目的[生成系统模型](design/decisions/043-generative-system-and-human-governed-autonomy.md)\n把这些部分理解为“现实与实践 → 原则 → 通用方法 → 具体情境中的临时组织 →\n实际工作与效果”，再由经验证的实践返回认知与修正。它的长期方向是受人治理的\n运行自治：Agent 最终可以在已接受的边界内感知、提议、组织和执行，但不能为\n自己授予目的、权力、事实采纳权或重大结果的验收权。\n\n项目的[创始使命](design/FOUNDING-MANDATE.md)是使生产性 AI 成为广泛可及、\n开放、可替换的公共能力：让普通人能以经济的开源模型工程系统完成有边界的\n生产性工作，并以具体证据而非对不透明平台主张的依赖来证明能力。它的伦理\n边界是解放而非攫取：人和 AI 的能力都不得被组织成不受问责的剥削来源。\n\n从[创始使命](design/FOUNDING-MANDATE.md)开始，可以理解项目为何存在；阅读\n[运行协议](design/operations/OPERATING-PROTOCOL.md)，可以了解经人授权的工作\n如何推进；也可以直接从下方活跃 skills 中选择一种具体方法。\n\n## 使用 Rossovia\n\n- 在本仓库中完整实践项目的运行、验证与演进体系；\n- 向其他项目独立安装一个 Skill，针对性采用一种方法；\n- 用 coding agent 打开本仓库，把它作为进入其他项目的 Main Agent 工作入口。\n  Agent 可以直接使用当前宿主的原生 sub-agent 能力，不需要先初始化 Rossovia\n  Workbench。\n\n需要可选的持久 Workbench 能力时，直接告诉 Agent：\n\n```text\n初始化 Rossovia 工作台，我的日常工作区在 /path/to/workspaces。\n把 /path/to/another-workspace-root 加为另一个工作区根目录。\n登记 /path/to/project，并保留 example-project 和 example-alias 两个口头别名。\n记住：跨项目遇到稳定、有边界的任务时，优先考虑 Work Cell。\n仅对 example-project，原生 sub-agent 提供必要订阅能力时优先使用它。\n显示适用于 example-project 的偏好。\n继续 example-project。\n显示所有已登记项目中正在进行的工作。\n创建一个本地任务来核对 example-project 的发布说明，然后显示我的 Workbench 任务。\n```\n\n仓库指引会通过可移植的 Node 入口把这些意图转换为有边界的工作台操作。登记时如果无法\n从仓库提供方验证稳定身份，Agent 只追问这个缺失值。它不会扫描未明确给出的\n主目录，不会自动登记扫描到的仓库，也不要求使用者记住命令参数。\n\n如果旧版本已初始化 `~/.atthis`，可以直接让 Agent“迁移 Rossovia 工作台”，或在\n普通初始化前运行 `./operations/workbench/rossovia migrate`。迁移会保留旧来源并写入\n回执，不会维持两个可写 home。\n\n在自动化、调试或没有 Agent 的环境中，仍可使用等价的手动入口：\n\n```sh\n./operations/workbench/rossovia init --workspace-root /path/to/workspaces\n./operations/workbench/rossovia root add /path/to/another-workspace-root\n./operations/workbench/rossovia project list\n./operations/workbench/rossovia resolve example-project\n./operations/workbench/rossovia preference list --project example-project\n```\n\n日常管理任务时，可以打开 Principal Workbench UI，或通过 control-plane CLI\n查看同一份持久本地任务来源：\n\n```sh\nbun run --cwd operations/workbench ui\n./operations/workbench/rossovia task list\n./operations/workbench/rossovia task show <task-id>\n```\n\nUI 支持创建、指派、纠正、提交、接受和重新打开本地 Principal-attributed 任务。\n跨边界启动、纠正交付、恢复和 runtime-verified 提交仍是有保护的 UI 操作；CLI\nhelp 会列出已支持的本地任务变更及其必需的 revision guards。\n\n成功的 `init` 会在 Rossovia home 的每个可写载体中实际执行并清理一次写入探针，\n然后返回 ",
+      "digest": "sha256:b1f24070c24b57b728e2b5dc3a8ddbe379070b2e681e3755bd5caf5f5ad6c490"
+    },
+    {
+      "id": "source:AGENTS.md",
+      "kind": "declared-document",
+      "sourceRef": "AGENTS.md",
+      "revision": "sha256:a56f368f285ee6ecbe2d55903cf0bd4314e3cc1539df547a93fe5940e7f345aa",
+      "excerpt": "# AGENTS.md\n\nThis file provides guidance to Codex (Codex.ai/code) when working with code in this repository.\n\n## Guiding Principles\n\n### Principles over rules\n\nSkills should help agents understand *why*, not just specify *what*. A skill that explains reasoning and principles produces better judgment across novel situations than one that mechanically lists rules. Favor broad principles over rigid prescriptions — give the agent enough context to generalize, not just enough rules to comply. ([Anthropic's constitution](https://www.anthropic.com/constitution): \"If we want models to exercise good judgment across a wide range of novel situations, they need to be able to generalize — to apply broad principles rather than mechanically following specific rules.\")\n\n### Hierarchical context management\n\nAgent context is finite — place stable orientation before scoped action,\ntask-specific methods on activation, and volatile detail on demand, then map\nthose timings to the actual runtime surfaces rather than assuming universal\nL1/L2/L3 containers. Keep SKILL.md under 500 lines; split details into supporting\nfiles. See [context-engineering](skills/context-engineering/SKILL.md) for the\ndelivery method and the [Agent Skills Specification](https://agentskills.io/specification#progressive-disclosure)\nfor the underlying progressive-disclosure surface.\n\n### Separate mechanism, adapter, and policy\n\nWhen an implementation claims to be reusable, keep three decisions distinct:\nthe mechanism owns invariant control flow and evidence, an adapter owns one\nexternal system's protocol and error semantics, and policy owns today's\nordering, defaults, credentials, budgets, and product choice. Do not force this\nsplit onto a one-off implementation that has no demonstrated variation.\n\nBefore accepting a reusable mechanism, run a substitution probe: replace one\ncurrent provider, model, artifact kind, or default strategy with a plausible\nalternative. If the mechanism must change only because an identifier, endpoint,\nrequest shape, pricing rule, or preference changed, move that knowledge into an\nadapter or policy. Verify the boundary at all three levels: mechanism tests use\nneutral identities, adapter tests retain concrete quirks, and one integration\nprobe proves the current policy solves the actual project problem.\n\n## Project Overview\n\nThis is a collection of agent skills — reusable methodology plugins for AI-assisted development. Skills are installed into a project and invoked via slash commands (e.g., `/design-driven`).\n\n## Direct agent delegation entry\n\nWhen a request entered through this r",
+      "digest": "sha256:7172c075959426e1cbf2d2eabeb3ea7c153d091b939f873756a3a6ac16faabbe"
+    },
+    {
+      "id": "source:principles/SEQUENCE.md",
+      "kind": "declared-document",
+      "sourceRef": "principles/SEQUENCE.md",
+      "revision": "sha256:e600edcde4b660760837636ab9bbd594f55a0c646ef92bd957266fd07b5e5735",
+      "excerpt": "# Principle Sequence\n\nP01｜原则高于规则｜一般化判断\n\nP02｜实事求是｜唯物主义认识论\n\nP03｜实践—认识—再实践｜实践论\n\nP04｜主要矛盾｜矛盾论\n\nP05｜具体问题具体分析｜矛盾特殊性\n\nP06｜本质与现象｜辩证法\n\nP07｜由具体经抽象再上升为具体｜马克思主义哲学\n\nP08｜可证伪性｜科学哲学\n\nP09｜注意力分层｜认知与信息架构\n\nP10｜有限人类带宽｜人机协作\n\nP11｜决策权与执行权分离｜组织设计\n\nP12｜外化记忆与代际继承｜分布式认知\n\nP13｜主张不等于事实；事实须经可追溯的验证提交｜实践论 / 控制论\n\nP14｜可由源重建者只是投影，不得拥有事实权｜系统论 / 事件溯源\n\nP15｜只选择化解当前矛盾且保留硬约束的最小有效跃迁｜控制论 / 动态规划\n\nP16｜表达形式须使实践主体能够行动；形式错位，正确内容亦会失效｜辩证法 / 实践论",
+      "digest": "sha256:b500e28c47f6ea480e7959be282932115448ed1c804a207c94ef6d8df869b7d7"
+    },
+    {
+      "id": "source:design/DESIGN.md",
+      "kind": "declared-document",
+      "sourceRef": "design/DESIGN.md",
+      "revision": "sha256:6b75d0de4825401518f8555c0ca677c44c3035d5fb2f5e999505c5511b0d6968",
+      "excerpt": "# Rossovia — Design\n\n> A human-directed, principle-centered engineering system in which stable\n> purpose and method generate revisable architecture, situated work, and\n> evidence that can return to correct them.\n\n## Architecture\n\n```\nobjective reality, inherited knowledge, and practice — not project-owned\n                                │\n                     observation and inquiry\n                                ▼\n        ┌─────────────────────────────────────────────┐\n        │ Founding Mandate          Principle Sequence│\n        │ purpose, values, lines    core method       │\n        └──────────────────────┬──────────────────────┘\n                               ▼\n                 accepted architecture and decisions\n                               ▼\n                  Skills and reusable capabilities\n                               ▼\n               situated Missions and temporary formations\n                               ▼\n                 mechanisms, adapters, and bounded effects\n                               ▼\n                    evidence, products, and projections\n                               └──────► renewed practice and inquiry\n```\n\nThe Founding Mandate and the Principle Sequence are both high-level governing\nsources, but they answer different questions. The Mandate records the\nhuman-given purpose, value boundary, constituency, and any explicitly adopted\nproject-local working line. The Sequence is the sole semantic source of compact\ncross-context core principles; it does not absorb every project method. Neither\ncan be inferred from the other, and neither authorizes a concrete Mission,\neffect, or acceptance decision.\n\nAccepted architecture owns the durable relations among authority, state,\nfeedback, verification, and replaceable parts. Skills express reusable\njudgments within those relations. A live formation combines selected methods\nwith the actual object, actors, constraints, and acceptance owner. Runtimes and\nadapters execute that already-formed work; their successful operation cannot\npromote their own policy or result into an upper source.\n\n### Governing layers\n\n| Layer | Owns | Changes only when | Must not absorb |\n|---|---|---|---|\n| Reality and practice | external conditions and consequences the project encounters | the world changes or a better observation corrects the project | project-owned claims of truth |\n| Founding Mandate | purpose, value boundary, human constituency, and explicitly adopted project-local working lines | the Principal or future accountable community explicitly revises it | implementation policy, runtime status, or ",
+      "digest": "sha256:89b22eba55e1d16342831c31e0c8368be85452f4e0db8c9cd32b8c7e3544eefa"
+    },
+    {
+      "id": "source:design/AUTONOMOUS-COLLECTIVE-INTELLIGENCE.md",
+      "kind": "declared-document",
+      "sourceRef": "design/AUTONOMOUS-COLLECTIVE-INTELLIGENCE.md",
+      "revision": "sha256:254636c33ae621b36ce8acf3c86613f5de7cfd549f50c17ad8eabed2d040414b",
+      "excerpt": "# Autonomous Collective Intelligence — Engineering Program\n\n**Status:** draft engineering program recording Principal direction\n**Date:** 2026-07-28\n**Governing basis:** [Founding Mandate](FOUNDING-MANDATE.md) and explicit\nPrincipal direction\n**Research basis:** [Autonomous Collective Agent\nSystems](research/autonomous-collective-agent-systems.md)\n\n## Purpose\n\nRossovia is being built toward a self-sensing, self-adaptive, self-organizing\ncollective intelligence composed of Agents.\n\nThis is the final **engineering operating form** in service of the Founding\nMandate, not the project's final social purpose. Autonomy is valuable because\nit can make productive AI capability more broadly accessible, economical,\ninspectable, replaceable, and useful without turning people into workflow\noperators. A system that runs longer while becoming more opaque, expensive,\nprovider-dependent, extractive, or difficult for practitioners to retain and\nchange has moved away from Rossovia's purpose.\n\nThe operating form is not a task manager with Agent workers, a larger\norchestration workflow, or a supervised control room. It is an engineering\nsystem that can receive naturally expressed human intent, remain engaged with\nreality over time, organize the work needed to change that reality, observe the\nresult, correct itself, and continue without a person operating every task and\nhandoff.\n\nSemi-autonomous operation is a necessary transition because present Agents and\nthe present system cannot yet close that whole relation reliably. It is not the\ndestination. Workbench supervision, Principal decision queues, manual task\ncreation, and fixed authorization surfaces are scaffolding for missing\ncapability. They must not become the architecture's reason for existing.\n\n## Governance boundary\n\nThe Principle Sequence remains Rossovia's only semantic root. The Founding\nMandate supplies the social purpose this program serves. This document records\nproject-specific engineering direction and tests; it cannot add or reinterpret\na P-ID, manufacture consent, enlarge runtime authority, accept a result, or\nauthorize an autonomous transition.\n\nUntil an accepted design change and representative operating evidence say\notherwise, the current supervised decisions remain in force. The commitments\nbelow are revisable through evidence and accepted project design. Descriptions\nof future system behavior are capability targets, not permissions for today's\nruntime.\n\n## The final operating relation\n\nThe intended human-system relation is:\n\n```text\nhuman purpose, values, constraints, and lived response\n                ",
+      "digest": "sha256:b94d498684b4a0c5fcdd5aa4caceca596731dad4c2faa061c8b51ae43c876340"
+    },
+    {
+      "id": "source:experiments/human-agent-visualization/DESIGN.md",
+      "kind": "declared-document",
+      "sourceRef": "experiments/human-agent-visualization/DESIGN.md",
+      "revision": "sha256:1b976efc1e629e6fd2af46796723df9b32e3ad24c86559b73f4815fe2566c283",
+      "excerpt": "# Human-Agent Visualization\n\n**Status:** revisable design candidate\n\n**Implemented slices:** Execution Boundary Lens over a frozen Workbench snapshot,\na frozen Skill Lens over one `skill-engineering rewrite` request, and a local\nProject Lens that converts one Agent-selected repository question and source set\ninto a revision-bound disposable evidence bundle.\n\n## Product boundary\n\nHuman-Agent Visualization is a communication medium through which a person can\nperceive, question, and correct an Agent's understanding of information, code,\nprojects, and architecture. It should make relations, evidence, uncertainty,\nand change easier to understand than a chat transcript or document alone.\n\nIt is not a decorative activity dashboard, a canonical graph database, or a\nWorkbench-only UI. A visually persuasive relation has no more authority than\nthe source and derivation behind it. The visualization product may cooperate\nwith a personal task application through explicit projections, but neither\nproduct is a required dependency of the other and this medium does not own the\ntask application's facts.\n\nRossovia's program already names the governing test: visual states should\nproject real operational relations, while task lists, timelines, project views,\nconversation, and other views remain alternate projections rather than backend\ndomain models ([Workbench is a perceptual surface](../../design/AUTONOMOUS-COLLECTIVE-INTELLIGENCE.md#workbench-is-a-perceptual-surface)).\n\n## Common invariant: three visible layers\n\nEvery lens must preserve three layers even when their visual treatment changes.\n\n| Layer | Contains | Authority and behavior |\n|---|---|---|\n| Durable and observed sources | Retained task and Mission records, source documents, revision identity, receipts, claims, and observed runtime state | Each item keeps its own authority, revision, freshness, and standing. Observation is not silently promoted to durable fact. |\n| Rebuildable projections | Selected objects and relations computed from sources for the present question | Disposable and reproducible. A projection may organize or omit source material but cannot become its truth owner. |\n| Ephemeral Agent explanation | The Agent's current framing, inferred relation, rationale, uncertainty, or proposed comparison | Clearly marked as interpretation, removable without losing evidence, and never rendered as an admitted fact merely because it is useful or confident. |\n\nThis follows the existing cognition boundary: immutable sources and exact-input\nartifacts retain lineage, while catalogs, graphs, and visualizations are\npro",
+      "digest": "sha256:52244eda32b0b04406976005c4f904ad6aa9c0fda9fad802ad76d54ece91dcdc"
+    },
+    {
+      "id": "source:operations/workbench/README.md",
+      "kind": "declared-document",
+      "sourceRef": "operations/workbench/README.md",
+      "revision": "sha256:3d3056b9ac56837085ac962409187d371c7291396da113ed7fb23ad84736daed",
+      "excerpt": "# Rossovia Workbench\n\nWorkbench is Rossovia's Agent-facing project, task, Mission, preference, and\nhook control plane. Its checked-in entrypoint is:\n\n```sh\n./operations/workbench/rossovia --help\n```\n\nThe launcher uses the self-contained `dist/rossovia.mjs` bundle with Node\n22.12–26. Bun is a development and test tool, not a target-machine requirement.\nFrom the repository root, rebuild the bundle with:\n\n```sh\nnpm --prefix operations/workbench run build\n```\n\nThe build uses a local Bun installation when present. With Node and Docker but\nno Bun, use `npm --prefix operations/workbench run build:docker`; Docker\nsupplies Bun only inside the build container and exports the same Node bundle.\n\n## Principal Workbench MVP\n\nThe human UI is the **Principal workspace** over that control plane. It is a\nrebuildable operational projection over registered project identity,\nGit-observed Worktrees, Workbench-local tasks, project-local Mission records,\nand cached or live supervised-Mission runner state. This distinction is\nintentional:\n\n- the Agent control plane owns durable sources, routing, typed task mutations,\n  and evidence joins;\n- the Principal workspace owns human navigation, attention, and task-shaped\n  interaction; and\n- harness-native delegation and bounded Autonomy integrations remain execution\n  adapters with their own authority and evidence.\n\nThe current CLI and HTTP task surfaces share one typed local-task\ncontrol-plane port. Cross-boundary launch, correction delivery, recovery, and\nruntime verification remain separate adapters. Native sub-agents do not run\nthrough Workbench: the active harness delegates directly, while a Workbench\ntask can retain the resulting claim and evidence.\n\nThis supervised task-oriented shell can supply evidence for Rossovia's\nPrincipal-directed draft\n[autonomous collective-intelligence\nprogram](../../design/AUTONOMOUS-COLLECTIVE-INTELLIGENCE.md). It lets a person\nperceive and correct capabilities that are still immature; it is not the final\norganization model. This task shell must not become the backend domain model;\nlater runtime work should remain oriented around Agents, durable state, and\nfeedback loops so that interaction can move from queue administration toward\nnatural expression, perception, and correction.\n\nRun the current UI with:\n\n```sh\nbun run --cwd operations/workbench ui\n```\n\nOpen `http://127.0.0.1:4317`. Add another explicitly selected local repository\nwith `bun run --cwd operations/workbench ui -- --root <git-root>` or select\nanother port with `--port <port>`.\n\nThe default surface is a multi-project workbench rather than",
+      "digest": "sha256:c546a91d67742e52d1879041db256df09f8fd6a1746a5a042c934fc488cdc298"
+    },
+    {
+      "id": "source:packages/work-cell/README.md",
+      "kind": "declared-document",
+      "sourceRef": "packages/work-cell/README.md",
+      "revision": "sha256:5e91518311cec4834ae23c65df26b40767ff3fdaad7e360113da4f61849d2581",
+      "excerpt": "# Work Cell\n\nAn independent runtime for executing bounded agent work and retaining evidence.\n\nOne cell is ephemeral. It receives an intent, isolated workspace, capability\nsurface, prepared instructions and context, acceptance conditions, and budget,\nthen executes with bounded file and command tools. A caller may independently\ndeclare terminal tools, a structured final output schema, and required output\nartifacts. The runtime records the final output and verifies declared artifacts\nwithout making any of those conditions part of another's tool schema.\n\nThe core does not require a Principle Sequence, genome, experiment treatment,\nproposal role, or vote. Adapters prepare those domain-specific forms into the\ngeneric `CellInput` contract. The Sequence adapter selects one lead P-ID and up\nto three supports, loads only their interpretations, and retains the expression\nas typed preparation evidence before invoking the unchanged core.\n\nThe package does not depend on an external agent engine. AI SDK 7 is the first\ndriver adapter; `deepseek-v4-flash` is the default model. Validation calls use\nonly an explicitly supplied route or a human-confirmed provider profile. A\nglobally available credential is discoverable capacity, not permission to\nspend it. Every configured fallback occurs at the individual model-call\nboundary. It does not restart a Cell or replay its tools.\nThe driver retains the actual serving provider and model, per-step usage, and\nperformance in the ordinary Cell trace. The core contract can support another\nadapter without changing run records or experiment semantics; see\n[decision 032](../../design/decisions/032-ai-sdk-7-work-cell-driver.md) and\n[decision 034](../../design/decisions/034-validation-model-routing.md).\nThe AI SDK driver exposes `list_files` and `read_file` only when `readPaths` is\nnon-empty, `write_file` only when write scope exists, and `run_command` only\nwhen commands are allow-listed. An unavailable capability is absent from the\nmodel-facing tool surface rather than present as a guaranteed failure.\n\nModel routing has three extension points. `model-route.ts` executes an ordered\nprovider-neutral route and retains attempts; `providers/` owns each external\nAPI's construction, request translation, error meaning, and pricing; and\n`provider-profile.ts` owns explicit preference and credential references while\n`validation-model.ts` resolves that selection into provider-specific models.\nAdding or replacing a validation provider should change these policy and\nadapter surfaces, not the generic route executor. OpenCode Go and Kimi Coding\nPlan are fi",
+      "digest": "sha256:556fb836befb23cd6010fec6ef91fab2f473feb51a7ed889e2d7de20073e9984"
+    }
+  ],
+  "projection": {
+    "steps": [
+      {
+        "id": "purpose",
+        "order": 1,
+        "layer": "source",
+        "title": "项目声明的用途",
+        "summary": "**Rossovia** 致力于让生产性 AI 成为共同、开放、可替换的能力；\n本仓库收录其当前方法。",
+        "evidence": {
+          "authority": "仓库内保留的声明来源",
+          "sourceRefs": [
+            "README.zh-CN.md"
+          ],
+          "revision": "sha256:44f3147c810ab73a4c2232bde3d415fbaad6f21cba778175ff787f5239b2e923",
+          "standing": "source-declared",
+          "disconfirmingEvidence": "来源被修改、移除或由更高优先级的项目声明取代时，需要重建。",
+          "excerpt": "# Rossovia — Skills\n\n[English](README.md)\n\n> **Rossovia** 致力于让生产性 AI 成为共同、开放、可替换的能力；\n> 本仓库收录其当前方法。\n\n“Rossovia”是[当前采用、仍可修订的项目名称](design/FOUNDING-IDENTITY.md)；`rossovia` 仓库仍只是它的一个\n工作界面。本仓库包含用于 AI 辅助开发的 [Agent Skills](https://agentskills.io) 和实验性\nWork Cell。它只是项目的一个工作界面，而不是整个项目、模型提供商或不透明的\nAI 平台。它的语义根是单行的[原则序列](principles/SEQUENCE.md)；每个 P-ID\n都有一份持续演进、来源可追溯的[解读](principles/interpretations/)，每个\nskill 则是在具体语境中对所选条目的表达。\n\n项目的[生成系统模型](design/decisions/043-generative-system-and-human-governed-autonomy.md)\n把这些部分理解为“现实与实践 → 原则 → 通用方法 → 具体情境中的临时组织 →\n实际工作与效果”，再由经验证的实践返回认知与修正。它的长期方向是受人治理的\n运行自治：Agent 最终可以在已接受的边界内感知、提议、组织和执行，但不能为\n自己授予目的、权力、事实采纳权或重大结果的验收权。\n\n项目的[创始使命](design/FOUNDING-MANDATE.md)是使生产性 AI 成为广泛可及、\n开放、可替换的公共能力：让普通人能以经济的开源模型工程系统完成有边界的\n生产性工作，并以具体证据而非对不透明平台主张的依赖来证明能力。它的伦理\n边界是解放而非攫取：人和 AI 的能力都不得被组织成不受问责的剥削来源。\n\n从[创始使命](design/FOUNDING-MANDATE.md)开始，可以理解项目为何存在；阅读\n[运行协议](design/operations/OPERATING-PROTOCOL.md)，可以了解经人授权的工作\n如何推进；也可以直接从下方活跃 skills 中选择一种具体方法。\n\n## 使用 Rossovia\n\n- 在本仓库中完整实践项目的运行、验证与演进体系；\n- 向其他项目独立安装一个 Skill，针对性采用一种方法；\n- 用 coding agent 打开本仓库，把它作为进入其他项目的 Main Agent 工作入口。\n  Agent 可以直接使用当前宿主的原生 sub-agent 能力，不需要先初始化 Rossovia\n  Workbench。\n\n需要可选的持久 Workbench 能力时，直接告诉 Agent：\n\n```text\n初始化 Rossovia 工作台，我的日常工作区在 /path/to/workspaces。\n把 /path/to/another-workspace-root 加为另一个工作区根目录。\n登记 /path/to/project，并保留 example-project 和 example-alias 两个口头别名。\n记住：跨项目遇到稳定、有边界的任务时，优先考虑 Work Cell。\n仅对 example-project，原生 sub-agent 提供必要订阅能力时优先使用它。\n显示适用于 example-project 的偏好。\n继续 example-project。\n显示所有已登记项目中正在进行的工作。\n创建一个本地任务来核对 example-project 的发布说明，然后显示我的 Workbench 任务。\n```\n\n仓库指引会通过可移植的 Node 入口把这些意图转换为有边界的工作台操作。登记时如果无法\n从仓库提供方验证稳定身份，Agent 只追问这个缺失值。它不会扫描未明确给出的\n主目录，不会自动登记扫描到的仓库，也不要求使用者记住命令参数。\n\n如果旧版本已初始化 `~/.atthis`，可以直接让 Agent“迁移 Rossovia 工作台”，或在\n普通初始化前运行 `./operations/workbench/rossovia migrate`。迁移会保留旧来源并写入\n回执，不会维持两个可写 home。\n\n在自动化、调试或没有 Agent 的环境中，仍可使用等价的手动入口：\n\n```sh\n./operations/workbench/rossovia init --workspace-root /path/to/workspaces\n./operations/workbench/rossovia root add /path/to/another-workspace-root\n./operations/workbench/rossovia project list\n./operations/workbench/rossovia resolve example-project\n./operations/workbench/rossovia preference list --project example-project\n```\n\n日常管理任务时，可以打开 Principal Workbench UI，或通过 control-plane CLI\n查看同一份持久本地任务来源：\n\n```sh\nbun run --cwd operations/workbench ui\n./operations/workbench/rossovia task list\n./operations/workbench/rossovia task show <task-id>\n```\n\nUI 支持创建、指派、纠正、提交、接受和重新打开本地 Principal-attributed 任务。\n跨边界启动、纠正交付、恢复和 runtime-verified 提交仍是有保护的 UI 操作；CLI\nhelp 会列出已支持的本地任务变更及其必需的 revision guards。\n\n成功的 `init` 会在 Rossovia home 的每个可写载体中实际执行并清理一次写入探针，\n然后返回 "
+        }
+      },
+      {
+        "id": "revision",
+        "order": 2,
+        "layer": "projection",
+        "title": "这次介绍绑定的修订",
+        "summary": "skills · c41561db2d2295acec · 含工作树修改",
+        "evidence": {
+          "authority": "从当前 revision 的文件与 manifest 确定性重建",
+          "sourceRefs": [
+            "README.md",
+            "README.zh-CN.md",
+            "AGENTS.md",
+            "principles/SEQUENCE.md",
+            "design/DESIGN.md",
+            "design/AUTONOMOUS-COLLECTIVE-INTELLIGENCE.md",
+            "experiments/human-agent-visualization/DESIGN.md",
+            "operations/workbench/README.md",
+            "packages/work-cell/README.md"
+          ],
+          "revision": "mvp-r3",
+          "standing": "observed-revision",
+          "disconfirmingEvidence": "文件集合、manifest 或 revision 改变时，该投影必须重建。",
+          "excerpt": "1966 个可检查文件；顶层：.claude、.codex、.cursor、.gitattributes、.github、.gitignore、.vercel、AGENTS.md、archive、CHANGELOG.md、chronicle、CLAUDE.md、design、development-log、experiments、LICENSE"
+        }
+      },
+      {
+        "id": "governing-source",
+        "order": 3,
+        "layer": "projection",
+        "title": "观察到的治理／设计来源",
+        "summary": "AGENTS.md → principles/SEQUENCE.md",
+        "evidence": {
+          "authority": "从当前 revision 的文件与 manifest 确定性重建",
+          "sourceRefs": [
+            "AGENTS.md",
+            "principles/SEQUENCE.md"
+          ],
+          "revision": "mvp-r3",
+          "standing": "declared-governing-sources",
+          "disconfirmingEvidence": "文件集合、manifest 或 revision 改变时，该投影必须重建。",
+          "excerpt": "AGENTS.md\nprinciples/SEQUENCE.md"
+        }
+      },
+      {
+        "id": "observed-entry",
+        "order": 4,
+        "layer": "projection",
+        "title": "可观察的代码入口",
+        "summary": "experiments/agent-era-blog/db/index.ts → experiments/agent-era-blog/worker/index.ts → experiments/human-agent-visualization/app.js → experiments/personal-task-app/src/app.js → operations/autonomy/src/index.ts → operations/workbench/ui/app.js → packages/cognition/src/index.ts → packages/work-cell/src/adapters/deliberation/index.ts",
+        "evidence": {
+          "authority": "从当前 revision 的文件与 manifest 确定性重建",
+          "sourceRefs": [
+            "README.zh-CN.md"
+          ],
+          "revision": "mvp-r3",
+          "standing": "observed-entrypoints",
+          "disconfirmingEvidence": "文件集合、manifest 或 revision 改变时，该投影必须重建。",
+          "excerpt": "experiments/agent-era-blog/db/index.ts\nexperiments/agent-era-blog/worker/index.ts\nexperiments/human-agent-visualization/app.js\nexperiments/personal-task-app/src/app.js\noperations/autonomy/src/index.ts\noperations/workbench/ui/app.js\npackages/cognition/src/index.ts\npackages/work-cell/src/adapters/deliberation/index.ts"
+        }
+      },
+      {
+        "id": "arrival-path",
+        "order": 5,
+        "layer": "explanation",
+        "title": "understand 的建议到达路径",
+        "summary": "面向“项目负责人”，先读声明来源，再沿一个可观察入口到验证面；这条顺序是 Agent 选择，不是仓库事实。",
+        "evidence": {
+          "authority": "面向当前问题的 Agent 路径建议；没有事实接受权",
+          "sourceRefs": [
+            "README.md",
+            "design/DESIGN.md",
+            "design/AUTONOMOUS-COLLECTIVE-INTELLIGENCE.md",
+            "principles/SEQUENCE.md",
+            "experiments/human-agent-visualization/DESIGN.md",
+            "operations/workbench/README.md",
+            "packages/work-cell/README.md",
+            "README.zh-CN.md"
+          ],
+          "revision": "mvp-r3",
+          "standing": "agent-interpretation",
+          "disconfirmingEvidence": "若项目声明了不同入口、责任边界或变更流程，应以该来源为准并重建建议。",
+          "excerpt": "README.md → design/DESIGN.md → design/AUTONOMOUS-COLLECTIVE-INTELLIGENCE.md → principles/SEQUENCE.md → experiments/human-agent-visualization/DESIGN.md → operations/workbench/README.md → packages/work-cell/README.md → README.zh-CN.md → bun run --cwd operations/workbench ui"
+        }
+      },
+      {
+        "id": "verification",
+        "order": 6,
+        "layer": "projection",
+        "title": "仓库声明的验证面",
+        "summary": "bun run --cwd operations/workbench ui · npm --prefix operations/workbench run build",
+        "evidence": {
+          "authority": "从当前 revision 的文件与 manifest 确定性重建",
+          "sourceRefs": [
+            "README.zh-CN.md",
+            "operations/workbench/README.md"
+          ],
+          "revision": "mvp-r3",
+          "standing": "declared-verification",
+          "disconfirmingEvidence": "文件集合、manifest 或 revision 改变时，该投影必须重建。",
+          "excerpt": "bun run --cwd operations/workbench ui ← bun run --cwd operations/workbench ui (README.zh-CN.md)\nnpm --prefix operations/workbench run build ← npm --prefix operations/workbench run build (operations/workbench/README.md)"
+        }
+      },
+      {
+        "id": "uncertainty",
+        "order": 7,
+        "layer": "explanation",
+        "title": "仍然不能从扫描结果断言的关系",
+        "summary": "组件所有权、真实调用路径和变更影响没有被文件存在性证明；需要项目声明或更窄的代码证据。",
+        "evidence": {
+          "authority": "面向当前问题的 Agent 路径建议；没有事实接受权",
+          "sourceRefs": [
+            "README.md",
+            "README.zh-CN.md",
+            "AGENTS.md"
+          ],
+          "revision": "mvp-r3",
+          "standing": "agent-interpretation",
+          "disconfirmingEvidence": "若项目声明了不同入口、责任边界或变更流程，应以该来源为准并重建建议。",
+          "excerpt": "unavailable: accepted component map, ownership graph, verified call path, change impact"
+        }
+      }
+    ],
+    "verificationCommands": [
+      {
+        "name": "documented:README.zh-CN.md",
+        "command": "bun run --cwd operations/workbench ui",
+        "declaredCommand": "bun run --cwd operations/workbench ui",
+        "sourceRef": "README.zh-CN.md"
+      },
+      {
+        "name": "documented:operations/workbench/README.md",
+        "command": "npm --prefix operations/workbench run build",
+        "declaredCommand": "npm --prefix operations/workbench run build",
+        "sourceRef": "operations/workbench/README.md"
+      }
+    ],
+    "proposedVerifications": [],
+    "observedFiles": 1966
+  },
+  "projectionDigest": "sha256:32177cc3a849eeb22e49271d2116537d26a0b9251d2fa6e943b7e09ecaa2be80",
+  "bindingDigest": "sha256:8ed954739358e827ab3aa970ec139b29380ee9a4f3a653c1e6972845fe4f7c14"
+}

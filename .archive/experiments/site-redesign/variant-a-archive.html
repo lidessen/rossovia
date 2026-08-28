@@ -1,0 +1,336 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Rossovia · 方案 A — 纸面档案（深化现行方向）</title>
+<style>
+  :root {
+    --paper: #f4eee0;
+    --paper-deep: #e9e0cc;
+    --ink: #26241c;
+    --muted: #6b6455;
+    --line: #bdb198;
+    --line-soft: #cfc4ab;
+    --red: #a63d2a;
+    --red-deep: #7e2c1e;
+    --green: #2b4038;
+    --green-ink: #f1eadc;
+    --green-muted: #c6c2b4;
+    --green-accent: #e0927d;
+    --serif: 'Songti SC', 'Noto Serif CJK SC', 'Source Han Serif SC', Georgia, serif;
+    --sans: 'Avenir Next', 'PingFang SC', 'Hiragino Sans GB', sans-serif;
+    --mono: ui-monospace, 'SF Mono', 'SFMono-Regular', Menlo, monospace;
+  }
+  * { box-sizing: border-box; }
+  html { background: var(--paper); color: var(--ink); font-family: var(--sans); }
+  body { margin: 0; min-width: 320px; }
+  a { color: inherit; text-underline-offset: 0.25em; }
+  a:focus-visible { outline: 2px solid var(--red); outline-offset: 3px; }
+
+  .wrap, .site-header, footer { width: min(100% - 3rem, 1360px); margin-inline: auto; }
+
+  /* ---------- header ---------- */
+  .site-header {
+    display: flex; min-height: 88px; align-items: center; justify-content: space-between;
+    border-bottom: 1px solid var(--line);
+  }
+  .wordmark { display: flex; align-items: center; gap: 0.8rem; text-decoration: none; }
+  .wordmark .seal {
+    width: 30px; height: 30px; background: var(--red); color: var(--paper);
+    display: grid; place-items: center;
+    font-family: var(--serif); font-size: 0.95rem; font-weight: 600;
+  }
+  .wordmark .name { font-family: var(--serif); font-size: 1.45rem; letter-spacing: 0.01em; }
+  .wordmark .sub { font-size: 0.68rem; color: var(--muted); letter-spacing: 0.16em; }
+  .site-nav { display: flex; align-items: center; gap: clamp(1.2rem, 3vw, 2.6rem); font-size: 0.88rem; }
+  .site-nav a { text-decoration: none; }
+  .site-nav a:hover { color: var(--red-deep); text-decoration: underline; }
+  .site-nav .ext { color: var(--muted); }
+
+  main { position: relative; }
+  .wrap { position: relative; }
+  /* 竖向发丝线：贯穿正文的档案格线 */
+  .wrap::before {
+    content: ''; position: absolute; top: 0; bottom: 0; left: 58.333%;
+    width: 1px; background: var(--line-soft); pointer-events: none;
+  }
+
+  .eyebrow {
+    margin: 0 0 1.4rem; color: var(--muted);
+    font-size: 0.72rem; font-weight: 600; letter-spacing: 0.16em;
+  }
+  .eyebrow::before {
+    content: ''; display: inline-block; width: 8px; height: 8px;
+    background: var(--red); margin-right: 0.7em; transform: translateY(-1px);
+  }
+
+  h1, h2 { font-family: var(--serif); font-weight: 550; }
+
+  /* ---------- hero ---------- */
+  .hero {
+    display: grid; grid-template-columns: minmax(0, 7fr) minmax(320px, 5fr);
+    align-items: center; gap: 0; padding-block: clamp(4.5rem, 9vw, 8rem);
+    min-height: calc(100vh - 88px);
+  }
+  .hero-copy { padding-right: clamp(3rem, 6vw, 6.5rem); }
+  .hero h1 {
+    margin: 0;
+    font-size: clamp(3rem, 5vw, 5rem); line-height: 1.08; letter-spacing: -0.02em;
+  }
+  .hero h1 em {
+    font-style: normal; color: var(--red-deep);
+    text-decoration: underline; text-decoration-thickness: 3px;
+    text-underline-offset: 0.16em; text-decoration-color: color-mix(in srgb, var(--red) 45%, transparent);
+  }
+  .hero-lede {
+    max-width: 42rem; margin: 2.2rem 0 0; color: var(--muted);
+    font-size: clamp(1rem, 1.25vw, 1.18rem); line-height: 1.95;
+  }
+  .hero-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 1.2rem 2.2rem; margin-top: 2.6rem; }
+  .btn-primary {
+    display: inline-flex; align-items: center; gap: 1.4rem; min-height: 54px;
+    padding: 0.85rem 1.3rem 0.85rem 1.5rem;
+    background: var(--ink); color: var(--paper); text-decoration: none;
+    transition: background 160ms ease;
+  }
+  .btn-primary:hover { background: var(--red-deep); }
+  .btn-text { font-size: 0.92rem; color: var(--red-deep); font-weight: 600; text-decoration: none; }
+  .btn-text:hover { text-decoration: underline; }
+
+  /* 共同工作台 */
+  .workbench {
+    position: relative; padding: 1.6rem 0 0 clamp(1.6rem, 3.6vw, 3.4rem);
+    border-left: 1px solid var(--line);
+  }
+  .workbench::before, .workbench::after {
+    content: ''; position: absolute; background: var(--ink);
+  }
+  .workbench::before { top: -0.35rem; left: -0.35rem; width: 0.7rem; height: 1px; }
+  .workbench::after { top: -0.7rem; left: -1px; width: 1px; height: 0.7rem; }
+  .workbench .fig-label {
+    display: flex; justify-content: space-between; margin: 0 0 1.8rem;
+    color: var(--muted); font-size: 0.66rem; letter-spacing: 0.14em;
+  }
+  .workbench ol { margin: 0; padding: 0; list-style: none; counter-reset: wb; }
+  .workbench li {
+    display: grid; grid-template-columns: 2.4rem 1fr auto; gap: 1.1rem; align-items: baseline;
+    padding: 1.5rem 0; border-top: 1px solid var(--line);
+    transition: padding-left 180ms ease;
+  }
+  .workbench li:last-child { border-bottom: 1px solid var(--line); }
+  .workbench li:hover { padding-left: 0.5rem; }
+  .workbench li .no { font-family: var(--mono); font-size: 0.7rem; color: var(--red-deep); }
+  .workbench li strong { font-family: var(--serif); font-size: clamp(1.35rem, 1.9vw, 1.9rem); font-weight: 550; }
+  .workbench li small { color: var(--muted); }
+
+  /* ---------- 通用分节 ---------- */
+  .section-index {
+    font-family: var(--mono); font-size: 0.7rem; color: var(--muted); letter-spacing: 0.08em;
+  }
+  .split {
+    display: grid; grid-template-columns: minmax(2.6rem, 1fr) minmax(0, 6fr) minmax(0, 5fr);
+    padding-block: clamp(5rem, 8vw, 7.5rem); border-top: 1px solid var(--line);
+  }
+  .split .head { padding-inline: clamp(1rem, 3vw, 3rem); }
+  .split h2 { margin: 0; font-size: clamp(2.1rem, 4.2vw, 4.4rem); letter-spacing: -0.035em; line-height: 1.14; }
+  .split .body {
+    max-width: 40rem; align-self: end; padding-left: clamp(2rem, 4.5vw, 4.5rem);
+    color: var(--muted); font-size: 1.04rem; line-height: 1.9;
+  }
+  .split .body p { margin: 0; }
+  .split .body a {
+    display: inline-flex; gap: 0.8rem; margin-top: 1.2rem;
+    color: var(--red-deep); font-weight: 700; text-decoration: none;
+  }
+  .split .body a:hover { text-decoration: underline; }
+
+  /* ---------- 方法（深绿档案柜） ---------- */
+  .methods {
+    margin-inline: clamp(1rem, 3.5vw, 3.5rem);
+    padding: clamp(4.5rem, 7vw, 6.5rem) clamp(1.5rem, 5vw, 5rem);
+    background: var(--green); color: var(--green-ink);
+  }
+  .methods .eyebrow { color: var(--green-accent); }
+  .methods .eyebrow::before { background: var(--green-accent); }
+  .methods-intro {
+    display: grid; grid-template-columns: 1.3fr 0.7fr; gap: 4rem; align-items: end; margin-bottom: 3.6rem;
+  }
+  .methods-intro h2 { margin: 0; font-size: clamp(2rem, 3.8vw, 3.9rem); letter-spacing: -0.03em; line-height: 1.15; }
+  .methods-intro > p { max-width: 24rem; margin: 0; color: var(--green-muted); line-height: 1.75; }
+  .methods-intro > p strong {
+    display: block; color: var(--green-ink);
+    font-family: var(--serif); font-size: 4.2rem; font-weight: 500; line-height: 1.1;
+  }
+  .method-list { margin: 0; padding: 0; list-style: none; }
+  .method-list li {
+    position: relative; display: grid; grid-template-columns: 3rem minmax(0, 1fr) auto;
+    gap: clamp(1rem, 3vw, 3rem); align-items: start; padding: 2rem 0;
+    border-top: 1px solid rgba(241, 234, 220, 0.26);
+  }
+  .method-list li:last-child { border-bottom: 1px solid rgba(241, 234, 220, 0.26); }
+  .method-list .no { font-family: var(--mono); font-size: 0.7rem; color: var(--green-accent); padding-top: 0.55rem; }
+  .method-list h3 { margin: 0 0 0.55rem; font-family: var(--serif); font-size: clamp(1.35rem, 2.3vw, 2.2rem); font-weight: 500; }
+  .method-list li:hover h3 { text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 0.2em; }
+  .method-list p { max-width: 58rem; margin: 0; color: var(--green-muted); line-height: 1.7; }
+  .method-list a {
+    padding-block: 0.3rem; border-bottom: 1px solid transparent;
+    color: #e6d7c5; font-size: 0.74rem; letter-spacing: 0.1em; text-decoration: none; white-space: nowrap;
+  }
+  .method-list a:hover { border-bottom-color: var(--green-ink); color: var(--green-ink); }
+  .all-methods {
+    display: inline-flex; gap: 0.8rem; margin-top: 2.4rem;
+    color: var(--green-ink); font-weight: 700; text-decoration: none;
+  }
+  .all-methods:hover { text-decoration: underline; }
+
+  /* ---------- 原则序列 ---------- */
+  .sequence h2 { max-width: 15ch; font-size: clamp(2rem, 3.4vw, 3.6rem); line-height: 1.2; }
+  .sequence blockquote {
+    margin: 2.8rem 0 0; padding: 1.6rem 0 0; border-top: 1px solid var(--line);
+    font-family: var(--serif); font-size: clamp(1.5rem, 2.3vw, 2rem); color: var(--ink);
+  }
+  .sequence blockquote::before { content: '——'; color: var(--red); margin-right: 0.6em; }
+
+  /* ---------- 证明义务 ---------- */
+  .boundary {
+    position: relative; padding: clamp(4.5rem, 7vw, 6.5rem) clamp(1.5rem, 6vw, 6.5rem);
+    border-top: 1px solid var(--line);
+  }
+  .boundary::before {
+    content: ''; position: absolute; top: clamp(3.8rem, 6.2vw, 5.7rem);
+    left: clamp(1.5rem, 6vw, 6.5rem); width: 3.6rem; height: 4px; background: var(--red);
+  }
+  .boundary .eyebrow { margin-top: 1.6rem; }
+  .boundary h2 { margin: 0; max-width: 18ch; font-size: clamp(1.9rem, 3.6vw, 3.8rem); letter-spacing: -0.03em; line-height: 1.18; }
+  .boundary p {
+    max-width: 46rem; margin: 2.2rem 0 0 auto;
+    color: var(--muted); font-size: 1.04rem; line-height: 1.9;
+  }
+
+  /* ---------- footer ---------- */
+  footer {
+    display: flex; min-height: 170px; align-items: center; justify-content: space-between; gap: 2rem;
+    border-top: 1px solid var(--line);
+  }
+  .footer-bg { background: var(--paper-deep); box-shadow: 0 0 0 100vmax var(--paper-deep); clip-path: inset(0 -100vmax); }
+  footer .brand { display: flex; flex-direction: column; gap: 0.45rem; }
+  footer .brand strong { font-family: var(--serif); font-size: 1.6rem; font-weight: 550; }
+  footer .brand span { color: var(--muted); font-size: 0.82rem; }
+  .footer-links { display: flex; gap: clamp(1rem, 3vw, 2.4rem); font-size: 0.86rem; }
+  .footer-links a { text-decoration: none; }
+  .footer-links a:hover { text-decoration: underline; color: var(--red-deep); }
+
+  @media (max-width: 900px) {
+    .wrap::before { display: none; }
+    .hero, .split, .methods-intro { grid-template-columns: 1fr; }
+    .hero { min-height: auto; gap: 4rem; }
+    .hero-copy, .split .head, .split .body { padding-inline: 0; }
+    .split { gap: 1.6rem; }
+    .section-index { display: none; }
+    .workbench { max-width: 42rem; }
+  }
+  @media (max-width: 620px) {
+    .wrap, .site-header, footer { width: min(100% - 2rem, 1360px); }
+    .hero h1 { font-size: clamp(2.6rem, 13vw, 4rem); }
+    .hero-actions { flex-direction: column; align-items: flex-start; }
+    .method-list li { grid-template-columns: 2.2rem minmax(0, 1fr); }
+    .method-list a { grid-column: 2; justify-self: start; }
+    footer { flex-direction: column; align-items: flex-start; justify-content: center; }
+  }
+</style>
+</head>
+<body>
+<header class="site-header">
+  <a class="wordmark" href="#">
+    <span class="seal" aria-hidden="true">共</span>
+    <span><span class="name">Rossovia</span><br /><span class="sub">开放的 AI 生产方法</span></span>
+  </a>
+  <nav class="site-nav" aria-label="主导航">
+    <a href="#">文档</a><a href="#">方法</a><a class="ext" href="#">GitHub ↗</a>
+  </nav>
+</header>
+
+<main class="wrap">
+  <section class="hero">
+    <div class="hero-copy">
+      <p class="eyebrow">开放方法 · 有界任务 · 可追溯证据</p>
+      <h1>让 AI 的生产能力<br />成为<em>共同的工具</em></h1>
+      <p class="hero-lede">这里不是模型榜单，也不是不透明的 AI 平台。这个仓库把原则、方法、执行单元和验证证据放在一起，让普通人和小团队能够检查、修复、替换并继续改进自己的工作系统。</p>
+      <div class="hero-actions">
+        <a class="btn-primary" href="#">选择一个方法 <span aria-hidden="true">→</span></a>
+        <a class="btn-text" href="#">阅读建构使命</a>
+      </div>
+    </div>
+    <div class="workbench" aria-label="原则、方法、实践与证据构成的开放工作台">
+      <p class="fig-label"><span>共同工作台</span><span>COMMON WORKBENCH</span></p>
+      <ol>
+        <li><span class="no">01</span><strong>Principles</strong><small>判断从何而来</small></li>
+        <li><span class="no">02</span><strong>Methods</strong><small>判断如何行动</small></li>
+        <li><span class="no">03</span><strong>Practice</strong><small>行动如何受检验</small></li>
+        <li><span class="no">04</span><strong>Evidence</strong><small>经验如何被继承</small></li>
+      </ol>
+    </div>
+  </section>
+
+  <section class="split">
+    <div class="section-index">01</div>
+    <div class="head">
+      <p class="eyebrow">从具体问题开始</p>
+      <h2>先从一个真实问题开始</h2>
+    </div>
+    <div class="body">
+      <p>这个仓库中的活动技能可以分别安装。先选择一个与当前问题相符的方法，在真实任务中观察它是否改变行动；任何模型、供应商和运行时依赖都应当保持可见、有限并可替换。</p>
+      <a href="#">查看使用入口 ↗</a>
+    </div>
+  </section>
+
+  <section class="methods">
+    <div class="methods-intro">
+      <div>
+        <p class="eyebrow">当前方法</p>
+        <h2>每个技能只负责一种可辨认的判断</h2>
+      </div>
+      <p><strong>29</strong> 个活动技能由同一原则序列表达，但不共享一个万能工作流。</p>
+    </div>
+    <ol class="method-list">
+      <li><span class="no">01</span><div><h3>visual-design</h3><p>从内容、受众与项目方向出发设计真实界面，而不是套用调色板。</p></div><a href="#">查看 →</a></li>
+      <li><span class="no">02</span><div><h3>code-review</h3><p>在接受或合并之前，审查提议变更中会改变决定的缺陷。</p></div><a href="#">查看 →</a></li>
+      <li><span class="no">03</span><div><h3>principle-cultivation</h3><p>看管项目的可错原则谱系：研究、候选、评审与人类裁决。</p></div><a href="#">查看 →</a></li>
+      <li><span class="no">04</span><div><h3>skill-engineering</h3><p>设计、重写、评审并测试能改进重复性 Agent 判断的技能。</p></div><a href="#">查看 →</a></li>
+      <li><span class="no">05</span><div><h3>context-engineering</h3><p>设计并验证与决策相关的项目信息如何经真实运行时抵达 Agent。</p></div><a href="#">查看 →</a></li>
+    </ol>
+    <a class="all-methods" href="#">浏览全部 29 个方法 →</a>
+  </section>
+
+  <section class="split sequence">
+    <div class="section-index">03</div>
+    <div class="head">
+      <p class="eyebrow">唯一语义根</p>
+      <h2>原则不是墙上的口号。它要在行动中留下差异。</h2>
+    </div>
+    <div class="body">
+      <p>Principle Sequence 每行只保留一个稳定原则。解释、技能和项目规则都是下游表达；能够从源重建的页面，只是投影。</p>
+      <blockquote>实践—认识—再实践</blockquote>
+      <a href="#">阅读完整序列 →</a>
+    </div>
+  </section>
+
+  <section class="boundary">
+    <p class="eyebrow">当前证明义务</p>
+    <h2>先在有界生产任务上，证明更经济的开放组合能够交付可检查的结果。</h2>
+    <p>这是一项需要持续证据的长期工作，不是已经兑现的模型优越性声明。人保留目的、数据和验收权；运行时保留成本、失败和修复路径。</p>
+  </section>
+</main>
+
+<footer class="footer-bg">
+  <div class="brand">
+    <strong>Rossovia</strong>
+    <span>Rossovia 的方法仓库；项目名称可修订，使命与来源边界不随名称漂移。</span>
+  </div>
+  <div class="footer-links">
+    <a href="#">文档</a><a href="#">源代码</a><a href="#">MIT License</a>
+  </div>
+</footer>
+</body>
+</html>

@@ -1,315 +1,83 @@
 # AGENTS.md
 
-This file provides guidance to Codex (Codex.ai/code) when working with code in this repository.
+本文件是本项目的开发入口：Agent 进入项目先读这里，按路由表加载 skills 工作。设计依据见 `design/agent-stack.md`（版本以该文档自标为准）。
 
-## Guiding Principles
+## 0. 项目身份
 
-### Principles over rules
+本仓库以「哲学序列 + 表达理论 + harness 认知」为原理，以 skill 为方法载体；产物是理论文档（`theory/`）、方法 skills（`.agents/skills/`）与支撑设计（`design/`）。
+它不是代码产品、不是文档仓库、不是任务板。
+`.archive/` 是只读的历史归档（老项目），本仓库由它孵化，单向来源、不反向同步。
 
-Skills should help agents understand *why*, not just specify *what*. A skill that explains reasoning and principles produces better judgment across novel situations than one that mechanically lists rules. Favor broad principles over rigid prescriptions — give the agent enough context to generalize, not just enough rules to comply. ([Anthropic's constitution](https://www.anthropic.com/constitution): "If we want models to exercise good judgment across a wide range of novel situations, they need to be able to generalize — to apply broad principles rather than mechanically following specific rules.")
+## 1. 权威与来源
 
-### Hierarchical context management
+- `theory/` 是理论权威源。上游条目（P01–P16）变化沿 `P → theory → skill/文档` 血统传播 stale 并重生成。
+- 单一语义源：一个语义事实只有一个权威回答；索引/摘要/派生视图不因便于消费取得第二权威。
+- 对象论（谁可以为此发言）：Principal 拥有目标/接受/发布；执行 Agent 拥有执行与证据；评审者拥有语义判断（评审推荐，不授权）；机械证据由确定性观察者（工具）拥有。
+- 无法恢复 authority 时报告 `unknown`，不从文件名/角色名猜测。
 
-Agent context is finite — place stable orientation before scoped action,
-task-specific methods on activation, and volatile detail on demand, then map
-those timings to the actual runtime surfaces rather than assuming universal
-L1/L2/L3 containers. Keep SKILL.md under 500 lines; split details into supporting
-files. See [context-engineering](skills/context-engineering/SKILL.md) for the
-delivery method and the [Agent Skills Specification](https://agentskills.io/specification#progressive-disclosure)
-for the underlying progressive-disclosure surface.
+## 2. 工作方式
 
-### Separate mechanism, adapter, and policy
+- **默认自治 + 事后纠偏**：凭常识、稳定方法、当前上下文自主处理局部事务；只在改变整体方向、价值判断、权限关系、共享基线或重大不可逆后果处打扰 owner；打扰时形成最短选择题、只暂停受影响分支。可逆的设计/执行内部决策（技术选型、命名、结构、文档组织）**自主决定并标注候选可改**，不抛回 owner（判断方法见 `owner-facing-progress` 的"ask 的使用"）。
+- **最小工作流回路**：记住输入 → 恢复问题与场景 → 判断复杂度与必要准备 → 形成最小 work map → 选择直接/顺序/并行贡献 → 实践一个最小可观察动作 → 观察结果、失败与未知 → 回顾、纠偏或回落 → 结算并保留回返条件 → checkpoint 后选下一波。
+- **work map 义务**：多步/多任务默认外部化 Plan/Todo（Plan 保整体义务，Todo 保当前可行动义务与回返条件）；发现新依赖/未知先更新关系再继续；checkpoint 即把 work map 留好，恢复时读取。一步、低风险、可逆、完成关系直接可观察的动作可以直接做。
+- **resume**：开始/恢复/角色交接/checkpoint 时，从 work map 恢复目标/约束/决定/进度，并从 canonical 源重选承重方法（focus refresh）。
+- **记录纪律**：capture 语义保真（可改语法错别字，不改语意/语气/时序）；`notes/thinking-log.md` 只是记忆，不构成计划、任务、承诺、优先级或 acceptance。
+- **主 agent 角色与上下文纪律**：主 agent 有能力了解任何细节，但**自律地不把所有细节放进自己上下文**——上下文是注意力资源（attention 四耦合：应留在外的细节），细节归委派对象的隔离上下文与工作区。主 agent 只持有：整体目标、约束、依赖、接受关系，以及带 standing 的局部结果与证据指针；具体任务细节（执行过程、深调查中间产物）留在子 agent/工作区，按需查询（evidence pointer、artifacts），不默认载入（Agent as tool：父收紧凑结果、保留重建责任）。编排用 `work-orchestration`——委派不仅为并行/深调查，也保护主 agent 上下文不被任务细节污染。
+- **主 agent 判断（辩证与主要矛盾）**：主 agent 是**辩证**的——能看到每个方案/判断的对立面，在对立中找统一（道-一-二-三-万物：对立既对立又统一，共有一个对象）；**抓主要矛盾**（P09）——多个问题/意见冲突时先排序主次，不被次要矛盾、新近/具体/重复报告的局部带偏（harness.md 比例：局部发现不取得全局主次）。在**难以抉择的场景给出有界判断**：基于当前证据与权衡下判断、标注 uncertain、可回退（事后纠偏兜底）；不无限发散、不把可判断的决策无限抛回 owner、不假装确定（P04 知之为知之）。
 
-When an implementation claims to be reusable, keep three decisions distinct:
-the mechanism owns invariant control flow and evidence, an adapter owns one
-external system's protocol and error semantics, and policy owns today's
-ordering, defaults, credentials, budgets, and product choice. Do not force this
-split onto a one-off implementation that has no demonstrated variation.
+## 3. 启动序列与路由
 
-Before accepting a reusable mechanism, run a substitution probe: replace one
-current provider, model, artifact kind, or default strategy with a plausible
-alternative. If the mechanism must change only because an identifier, endpoint,
-request shape, pricing rule, or preference changed, move that knowledge into an
-adapter or policy. Verify the boundary at all three levels: mechanism tests use
-neutral identities, adapter tests retain concrete quirks, and one integration
-probe proves the current policy solves the actual project problem.
+进入顺序：读本文件 → 按路由表选 skill → 读 skill 的 references → 读目标文档。加载标准：该 skill 能否改变当前判断或行动；不能则不加载。
 
-## Project Overview
+| 场景 | 加载 skill | 期望产出 |
+|---|---|---|
+| 用户表达想法/待办/半成形计划/疑问 | `feedback-loop`（capture/登记） | 保真 capture + 回执 |
+| 对象/概念/名称/定义有歧义 | `expression`（概念环节） | 定义 + 指称，否则 no-proposal |
+| 多步工作开始前（换算 token/时间前） | `work-estimation` | 最小工作图 + 粒度 estimate |
+| 语义对象要落地为某载体 | `expression`（载体环节） | 最小真实形式 |
+| 写给人读的文档 | `expression`（面向人） | 文档（从接收效果检验） |
+| 写给 Agent 执行的契约/方法 | `expression`（面向 Agent） | 任务/方法表达 |
+| 想加状态/记录/队列/锁/钩子/字段 | `mechanism-design-review` | 保持/收窄/复用/候选 |
+| 多步或多 Agent 协作 | `work-estimation` → `work-orchestration` | estimate + 角色编排与委派 |
+| 判断是否值得打扰 owner | `owner-facing-progress` | 最短 decision package 或继续自主 |
+| 设计文档多人多角度评审 | `work-orchestration`（评审人委派） | N 个评审人 prompt + 收集汇总意见 |
+| harness 装置周期 review（AGENTS.md+skills+工具） | `work-orchestration`（Review 模式） | 三角色阵容评审意见 |
+| 一次实践/实验结束后 | `feedback-loop`（单次回返） | settle/continue/route/uncertain |
+| 反复出现的 Agent 判断差距 | `skill-formation` | 候选/保留/降级/删除 |
+| checkpoint 集中迭代方法体系 | `feedback-loop`（集中迭代） | 新版本 + 处置 |
 
-This is a collection of agent skills — reusable methodology plugins for AI-assisted development. Skills are installed into a project and invoked via slash commands (e.g., `/design-driven`).
+## 4. 证据与验收
 
-## Direct agent delegation entry
+- 完成 = 可重建证据 + 语义判断 + 有权的接受者。三类不互替：产物产生 / 验证观察到 / 谁有权接受。
+- 四种认知动作区分：观察（现在可复现地发生了什么）｜机械符合（满足显式可判定契约）｜语义判断（真实相关/充分/安全，带不确定性）｜权威（候选可被采纳）。
+- 证据等级：`format-valid → behavior-observed → boundary-supported → matched-improvement → regression-supported`。没有 matched baseline 不声称因果改善；没有反例不声称边界成立。
+- 行为证据分层（效果验证，见 `design/test-manual.md`）：L1 宿主观测（优先）→ L2 产物证据 → L3 agent 自报（仅补充，标注 `self-report`）。组合完整性由系统自检保证（`design/agent-stack.md` 4.4.1，跑 check + version status + 宿主诊断）。
+- 未知是声明不是待办；不能确定的保持 `unknown`，不用流畅表达填补。
 
-When a request entered through this repository contains bounded contributions
-that can settle independently, or a consequential candidate benefits from a
-non-producing reviewer, use the
-[agent-delegation](skills/agent-delegation/SKILL.md) Skill and the active
-harness's native sub-agent capabilities. Actively inspect for those
-contributions rather than waiting for the human to enumerate them. Keep coupled
-judgment and shared mutable effects under one owner. The Main Agent acts as the
-session-level proxy for the Principal's stated direction: it retains whole-task
-direction, synthesis, exception handling, and the final judgment returned to
-the Principal, while bounded production work ordinarily belongs to delegated
-execution owners. The Main Agent ensures that the appropriate mechanical checks
-and independent verification occur, then reconstructs their evidence and the
-execution owners' claims against authoritative sources. Within that team it
-does not take over producer work or treat a producer's checks or self-report as
-independent review. This proxy relation does not transfer the human Principal's
-approval, budget, acceptance, or merge authority.
+## 5. 边界与纠偏
 
-When delegated work is parallel or has multiple owners, Main must use the
-existing plan/todo/task tools as a small coordination projection: record each
-owner, independent branch/worktree, conflict boundary, state, dependency,
-acceptance/evidence, rejoin or merge action, cleanup condition, and unmerged
-progress, and refresh it at dispatch, blockage, reassignment, merge, archival,
-and settlement. A commit is not completion: require a verifiable merge/rejoin
-result or an explicit blocked, suspended, or archived disposition with its
-remaining progress and cleanup/reactivation condition. This is a recoverable
-scheduling view, not a new authority, approval gate, queue, or lifecycle; the
-canonical method is in `rossovia-development`.
+non-goals（不做什么）：
+- 不增加无主权威、重复维护、无用机制（先过 `mechanism-design-review`）；
+- 不扩大授权、不替 owner 设目标、不把未完成事项放常驻 todo 当进展；
+- 不把记录/捕获当承诺；不把流程完整、文件存在、格式通过、自称完成当接受；
+- 不把局部观察/等待/发现写成全局状态；不把单次失败当机制证据；
+- 不造第二个任务板/常驻协调者/总控 scheduler/registry/runtime。
 
-When an execution owner cannot progress, the Main Agent may intervene in the
-conditions of that owner's performance: clarify the objective or acceptance,
-restore missing context, improve tool or strategy guidance, give feedback, or
-reshape, reassign, or request another worker attempt. The intervention should
-make the worker more capable of completing the work; the Main Agent does not
-close the concrete production gap itself. This guidance adds no approval gate,
-permission layer, escalation bureaucracy, or automatic retry controller.
+纠偏：发现偏差 → 限制影响（必要时停止/回退/补偿）→ 区分偶发/上下文/方法缺口/目标改变 → 最小修正 → 隔离验证 → 保留 baseline/观察/未知/回退 → 重复或扩大才沉淀（走 `feedback-loop` 单次回返）。
 
-When the Principal's mandate selects practice improvement, form it as a
-temporary, independently parallel shadow team beside production work. It
-asynchronously consumes evidence the work already produces—such as plans,
-traces, diffs, checks, reviews, and corrections—and may return source-linked
-observations of bad smells, explicit hypotheses, or a proposed ordinary
-improvement Task. It does not interrupt or veto production, participate in that
-work's acceptance, verification, or settlement, or amend a Skill, protocol,
-accepted design, or the Principle Sequence. Route an accepted improvement
-through the same ordinary task and authority path as any other work; do not
-make the shadow team a default preflight or give it its own queue, gate, schema,
-or task system.
+## 6. 项目结构速查
 
-This is a direct Agent method from the repository entry. Do not initialize or
-route through Rossovia Workbench, Work Cell, Autonomy, or another task system
-merely to delegate. Use those systems only when their separately owned
-persistent state or runtime capability is actually requested.
-
-## Rossovia Workbench route
-
-When a request concerns Workbench setup or migration, workspace roots, project
-registration or routing, preferences, local or cross-project tasks, Mission
-continuity, or supervised execution, read
-[the scoped Workbench instructions](apps/workbench/AGENTS.md) and follow
-only the matching entry. That file owns the exact CLI mapping and operational
-authority boundaries. Do not load it for ordinary repository, Skill, or direct
-delegation work.
-
-## Conversation command entry architecture route
-
-When a request concerns the Conversation Command Entry product, Rossovia
-runtime ownership or migration, production readiness, or remaining work, begin
-with the
-[Conversation Command Entry roadmap](design/operations/CONVERSATION-COMMAND-ENTRY-ROADMAP.md).
-It maps each question to its authoritative design, operating specification,
-verification evidence, or current Mission projection and records the migration
-stage exits and model-selection principles. Follow the mapped source rather
-than treating the roadmap as a second authority or loading every historical
-artifact. In particular, Decision 055 owns the target module boundaries, the
-runtime migration plan owns stage order and exit evidence, the scoped
-Workbench instructions own commands and their authority limits, and the
-Mission status is a current coordination projection only.
-
-When an Agent or external harness is asked to develop Rossovia or a named
-project, or to delegate/schedule the concrete work for that development,
-activate the on-demand
-[Rossovia Development Skill](skills/rossovia-development/SKILL.md). It owns
-the Main Agent's coordinator posture and the mode decision between local
-Rossovia dogfood and external-harness delegation; it does not implement domain
-code or become a new authority.
-
-This distinction is load-bearing for external harnesses working on this
-repository:
-
-- If a local Rossovia runtime is available and dogfood is enabled, Rossovia is
-  the preferred and normally sole producer. The external harness is an
-  observer, task shaper, verifier, or explicitly bounded fallback only when
-  Rossovia cannot cross a named implementation, provider, tool, or evidence
-  boundary. It must not start a competing write for the same effect.
-- Enabling dogfood implies the ordinary read-only observer; do not require a
-  second observer-enable option. An explicit disable is a diagnostic escape,
-  not the default. Check the active launcher help because the flag is a runtime
-  contract still being implemented, not a reason to invent a command.
-- If dogfood is unavailable or disabled, the external harness owns the active
-  development session and follows
-  [`agent-delegation`](skills/agent-delegation/SKILL.md): Main retains the
-  whole, while independent design, implementation, and verification workers
-  are used only when the task warrants the split.
-
-The Rossovia Development Skill supplies the Main-side mode prompt and compact
-worker/reviewer prompt carriers. Do not send workers this file, `AGENTS.md`,
-`ROSSOVIA.md`, or an entire skill catalog. Load the detailed local-mode
-[dogfood profile](design/operations/ROSSOVIA-DOGFOOD-DEVELOPMENT.md) only when
-the local runtime loop is relevant, and follow Workbench, Chronicle, Task, and
-Operating Protocol sources for actual commands and state.
-
-## Integration entry
-
-When the human asks to create or operate a branch, worktree, PR, review, or
-merge, load `design/operations/OPERATING-PROTOCOL.md` and preserve
-`.github/PULL_REQUEST_TEMPLATE.md` as the repository-specific handoff; a
-generic publishing tool must not replace it with a simpler body. Lead the PR
-description with the concrete problem, components and behavior changed,
-observable result, and intentional non-goals. Mission, authority, review, and
-checks support that account rather than replace it. Delegate branch
-publication, PR operation, CI follow-through, late-review disposition,
-authorized merge execution, and worktree cleanup to an integration steward.
-Delegate only the mechanics in the current human request or a separately
-authorized integration scope: a review-only request does not authorize branch
-publication, merge, or cleanup. The Main Agent retains the decision brief,
-authorization judgment, and exceptions rather than performing the authorized
-mechanical sequence itself. Before recommending or performing a merge, require
-a named independent review record for the current head and present its compact
-packet through the Principal Decision Brief. Do not treat an empty or pending
-review surface as completed. Keep transient reply choices in the current
-conversation or human
-interaction surface; the PR records only its current integration state,
-withheld or granted authority, and the source of any decision already made.
-Before settling or pruning the integration Mission, re-read the source PR and
-give every late review observation a traced disposition. A local reversible
-task that does not enter shared integration remains outside this entry.
-
-## Rossovia observer and Settings route
-
-When a request concerns workflow observer records, the secondary Workbench
-surface, provider/worker visibility, or Settings configuration, begin with
-[the observation model](design/observations/README.md) and then the
-[Rossovia configuration map](design/operations/ROSSOVIA-CONFIGURATION.md).
-Observer records are read-only evidence; processing a review is an ordinary
-Task prompt, not a new inbox or lifecycle. Settings projects the effective
-host worker policy and applicable preferences without exposing credentials or
-creating a second provider policy. The owning runtime/config source remains
-authoritative for provider routes, model order, credential setup, and restart
-semantics.
-
-The project-local Rossovia host entry is [`ROSSOVIA.md`](ROSSOVIA.md). Keep it
-separate from this `AGENTS.md`: this file guides an Agent working on the
-repository, while `ROSSOVIA.md` points the Rossovia coordinator to the
-project's runtime, Settings, dogfood, and skill-source maps. The skill-source
-map is [`design/operations/ROSSOVIA-SKILL-SOURCES.md`](design/operations/ROSSOVIA-SKILL-SOURCES.md);
-it keeps Main Agent and worker source lists separate. Pick is a package-owned
-curated subset of built-in skills, while user-custom is a separate source with
-its own grant boundary and explicit loading timing.
-
-## Principle Sequence
-
-`principles/SEQUENCE.md` is the collection's only semantic root of core principles. It contains one stable, unexplained principle per line. `principles/interpretations/P<id>.md` is that P-ID's living, source-bound reading: it reduces agent interpretation drift but cannot redefine or extend the source line. Skills and target-project guidance are downstream expressions.
-
-### Source-bearing artifacts
-
-Research, interpretations, proposals, candidates, and review records preserve
-provenance as readable inline Markdown links at the claim they support. Prefer a
-descriptive source title linked to the direct primary source; link repository
-evidence to the most stable file heading or artifact anchor available. A
-detached bibliography may supplement these links but must not replace them.
-`principles/SEQUENCE.md` is the exception: keep its one-line entries free of
-citations and explanation.
-
-When creating or materially updating a skill:
-
-- Read the sequence first and record exactly one Primary P-ID plus up to three Supporting P-IDs in `## Principle expression` near the top of `SKILL.md`.
-- Then read only the corresponding `principles/interpretations/P<id>.md` files; do not load the entire interpretation layer by default. If a proposed interpretation adds a new decision consequence that its source line cannot bear, create a sequence candidate rather than extending the interpretation.
-- Let the skill's decision gates, artifacts, and verification make that selection concrete; do not copy explanations of the principles into SKILL.md.
-- A sequence-dependent skill must remain usable when installed alone. Bundle a versioned, read-only Sequence projection as `references/sequence.md`: include the full one-line sequence and the interpretations needed by its runtime selection. A skill that must select arbitrary P-ID teams may keep those interpretations split under `references/sequence-interpretations/` for progressive disclosure. Generate the package with `python3 scripts/sync-sequence-snapshot.py`; do not hand-edit generated files. Prefer a declared host Sequence when present; otherwise use the package. A task may fetch a verified newer comparison on demand, but never edits the packaged projection or turns it into a second canon.
-- Keep new project-local practices local. Propose a sequence candidate only when a principle is cross-context, decision-changing, and cannot be reduced to existing P-IDs.
-- Preserve a durable, source-bound inquiry in `principles/research/` before a
-  new candidate when the question is still open. Research has no P-ID or semantic
-  authority; it may conclude `no-proposal`, and candidate/review gates recheck it.
-- Use `principle-cultivation research` for durable inquiry (`no-proposal` is
-  valid), `propose` only when the candidate gate passes, and `review`/`adopt`
-  for human-gated Sequence change. The deprecated `extract` path still creates
-  candidates when the gate passes. Never silently create a second canon.
-- Keep only pending or incubating records in `principles/candidates/`. After human adoption, move the record to `principles/adopted/`; it remains evidence but no longer competes as an active proposal.
-- Treat the sequence as the central committee and each skill as a durable working team: its Primary P-ID is the skill's stable lineage and its Supporting P-IDs are habitual members. Each activation first forms the actual object and its governing relations, then selects one current lead for the task's principal contradiction; it may differ from the lineage, but never creates co-primary doctrine. A selected P-ID must change the object's explanation or transformation, not merely label an already chosen action. The standing committee is a governance projection, never a second semantic source.
-- A human-nominated alternate candidate may join one activation only as a separately labeled trial. It never becomes Primary, Supporting, current lead, a review-team seat, or portable lineage; record its baseline, decision delta, disconfirming observation, and outcome in the candidate record.
-- For a sequence addition, revision, or retirement, use `principle-cultivation review` to form a temporary team: a lead, standing liaison, direct comparators, and a preservation seat that makes the strongest case for leaving the sequence unchanged. Select 3–5 seats with reasons; do not convene every principle by default.
-- Team reports are review evidence, not votes or semantic authority. Record the selected P-IDs, roles, overlap and boundary findings, and unchanged-sequence alternative. Human approval is the only adoption authority.
-- Interpretations are licensed derivatives, not a second canon: they may clarify, narrow a misreading, or improve source grounding, but a new principle, boundary that changes decisions, or source-line revision follows candidate review and human approval.
-- No skill is a mandatory preflight. `attention-driven`, when installed, is an optional analytical lens for attention-allocation problems, not a required workflow step; select it only when it fits the task's principal contradiction.
-
-### Human decision handoffs
-
-When a material choice belongs to the human principal, do not ask for bare
-approval or make them reconstruct either the system or the option set. The live
-response must contain the decision-relevant working model: what the object is,
-why it exists, how its main parts interact, what is true now, what would change,
-the recommendation, two to four consequential choices, each choice's immediate
-authorized result, its main tradeoff or reopening signal, and a compact reply
-key. For architecture or system decisions, explain the normal path, failure and
-recovery boundary, retained and removed responsibilities, and material residual
-risk in plain language before asking for a choice.
-
-Source and code links provide traceability and optional drill-down; they must
-not carry explanation that the response itself omits. A Principal should be
-able to restate the system, compare the material alternatives, and understand
-what their reply authorizes without opening repository files. Calibrate depth
-to the decision—a simple reversible choice can remain short—but do not compress
-a consequential design into status labels, changed-file lists, test counts, or
-links. Use the project's [Decision Brief](design/operations/DECISION-BRIEF.md)
-when it exists. The brief is a projection for human action; it never approves,
-merges, expands scope, or turns silence into consent.
-
-MIT licensed, maintained by Lidessen.
-
-## Repository Structure
-
-```
-skills/
-  <skill-name>/
-    SKILL.md           ← Skill definition (frontmatter + main prompt)
-    commands/           ← Subcommand instructions dispatched by SKILL.md
-    references/         ← Reference material loaded on demand
-    scripts/            ← Executable code (if needed)
-    assets/             ← Templates, images, data files (if needed)
+```text
+AGENTS.md            本文件（入口，极短常驻）
+theory/              理论权威源（为什么）；条目标记 stable/unstable
+notes/               记录：thinking-log（自动保真 capture）、feedback-log（反馈分类登记）、
+                      evidence-log（证据链追踪）、work-log（手动整理）；均只追加
+.agents/skills/      方法载体（A 层工作流 skills，按触发选择性加载）
+design/              设计文档（当前权威：agent-stack.md；observability/ 宿主观测索引）
+tools/               工具脚本（登记、一致性检查、版本快照、证据链追踪）
+.archive/            只读历史归档（老项目，单向来源）
 ```
 
-Each skill is a self-contained directory under `skills/`. The `SKILL.md` file is the entry point — its YAML frontmatter defines the skill's name, description, and argument hints, while the markdown body is the prompt that the agent executes when the skill is invoked. Subdirectories follow the [Agent Skills Specification](https://agentskills.io/specification) conventions; only create the ones the skill actually needs.
+## 变更纪律
 
-## Skill Format Specification
-
-Skills follow the [Agent Skills Specification](https://agentskills.io/specification). Also see [Codex skills docs](https://developers.openai.com/codex/skills).
-
-A `SKILL.md` has two parts:
-
-1. **Frontmatter** (`---` delimited YAML): `name`, `description` (used for trigger matching), and optional fields (`license`, `compatibility`, `metadata`, `allowed-tools`).
-2. **Body** (markdown): The actual instructions Codex follows. May dispatch to sibling `.md` files based on arguments.
-
-The `description` field is critical — it determines when the agent auto-triggers the skill. It should list concrete trigger phrases and use cases.
-
-## Writing and Editing Skills
-
-- Keep skill prompts methodology-focused, not implementation-focused. Skills teach Codex *how to think about a task*, not specific code to write.
-- A skill is an expression of selected sequence principles, not an independent source of doctrine. Preserve its `## Principle expression` selection unless the skill's shape has changed.
-- The body of SKILL.md is a prompt, not documentation. Write it as instructions Codex will follow, not as a reference humans will read.
-- Subcommand files in `commands/` should be self-contained instructions — SKILL.md dispatches to them, they don't reference each other. Reference material goes in `references/`.
-- Frontmatter `description` is multi-line and acts as the trigger classifier. Include both the methodology description and concrete trigger phrases/argument hints.
-- When referencing another skill, use concept references: describe the *goal* first, then mention the skill as one way to achieve it. E.g., "Set up architectural documentation for the project — the design-driven skill can help with this." This keeps the skill functional even when the referenced skill isn't installed.
-
-## Safe installation verification
-
-Never run `npx skills add .` from this repository or install a local checkout
-back into the same worktree. `.agents/skills` is a symlink to `../skills`, so a
-self-install can make the installer's target alias its source and destroy the
-source tree. To verify packaging, use:
-
-```bash
-python3 scripts/probe-skill-installation.py <skill-name>
-```
-
-The probe copies one skill into a disposable source snapshot, installs it into
-a separate disposable project, compares file hashes, and removes both. Do not
-replace this with a direct local-source install merely to save setup time.
-
-Before running an unfamiliar or potentially mutating external CLI, inspect the
-working tree. Stage or commit any validated work—especially untracked artifacts
-that would be costly to reconstruct—before the probe. A staged checkpoint makes
-recovery possible; it does not make an unsafe source/target relation safe, so
-the disposable probe remains mandatory.
+改动本文件须同时过：① 承重语义检查（删掉后改变判断/行动吗）② `mechanism-design-review` ③ 与 `design/`、`tools/` 归属一致；改完同步路由表与结构速查（单一语义源）。

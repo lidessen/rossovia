@@ -1,0 +1,139 @@
+# Agent 组合方案：AGENTS.md + Skills + 工具
+
+> 状态：方案草案，未实施。
+> 版本：v4（v0 → v1：新增"应用 → 集中迭代 → 理论演进"闭环，移除候选区，采纳 stable/unstable + 版本机制；
+> v1 → v2：设计修剪——工具 9→5 合并，method-evolution 与 4.2 迭代协议合一，纠偏闭环归入 practice-cycle，
+> focus refresh 并入 resume；
+> v2 → v3：新增 4.4 基础集成测试（测试手册给主 agent，证据分层 L1/L2/L3），观察机制按宿主适配，
+> 集中索引见 `design/observability/`；
+> v3 → v4：4.4 拆分为「系统自检（smoke，Phase 1，无 fixture）」+「效果验证（受控 eval，Phase 2，用 fixture）」——
+> 不人为构造场景测效果作为第一阶段；fixture 归受控实验；4.4.2 展开给主 agent 的完整方法步骤
+> （委派 sub agent、L1/L2/L3 收证据、三层评估、对照回归、处置）。
+> v4 → v5：4.4.2 方法主体拆出为独立手册 `design/test-manual.md`（单一语义源，设计文档只引用）。
+> 依据：`theory/` 最新整理内容。
+> 目标：让 agent 走得更远（长任务持续推进 + checkpoint 回返）、更独立（默认自治 + 事后纠偏）、
+> 主观能动性更强（从目标与现实产生有价值的下一候选、采取有界行动、按结果改变后续判断）。
+
+## 分层
+
+`theory/`（为什么）→ `AGENTS.md`（入口/宪章，极短常驻）→ `skills/`（方法，按触发选择性加载）→
+harness 文档（详细版）→ `notes/`（记录）→ `.archive/`（只读）。
+工具属 base/runtime 层，承接文字做不到的强制、权限、原子性、恢复与观测。
+
+## 1. AGENTS.md 放什么
+
+1. **目的与边界**：accepted purpose、objective、non-goals、canonical authority、接受权归属（能动性的"目的锚"）。
+2. **自治契约（核心）**：默认自主处理局部事务；必须请示四类事——改变整体方向 / 价值判断 / 权限关系 / 共享基线 / 重大不可逆后果；请示形成最短选择题、只暂停受影响分支；小错走事后纠偏，不逐点请示。
+3. **work map 约定**：多步/多任务默认外部化 Plan/Todo（Plan 保整体义务、Todo 保当前可行动义务）；发现新依赖/未知先更新关系再继续；checkpoint 即把 work map 留好，恢复时读取（回返条件随状态保存）。
+4. **运行机制锚点**：开始/恢复/角色交接/checkpoint 时做 resume——从 work map 恢复目标/约束/决定/进度，并从 canonical 源重选承重方法（focus refresh 是 resume 的子动作）；偏差走 feedback-loop 单次回返纠偏（发现 → 限制 → 区分 → 最小修正 → 隔离验证 → 沉淀或回退）。
+5. **skill 索引与触发**：指向 skills、每个 skill 何时加载、关键参考文档位置（不把全部 doctrine 复制进常开 context）。
+6. **禁止写**：不写"要主动/要更积极"口号；不承诺文字无法执行的东西（强制/权限/唤醒属 runtime/base）；不建第二任务板或常驻协调者。
+
+## 2. Skills 设计（7 个主题 skill）
+
+- `expression`：表达主题——语义对象处理链：概念定义（对象证据→四探针→定义→指称）→ 载体选择（四项使用关系→最小真实形式）→ 表达（面向人写作 / 面向 Agent 表达；双受众 reference）。吸收 concept-articulation、form-selection、human-writing、agent-expression。
+- `feedback-loop`：反馈迭代主题——capture/登记（保真记录 + 分类路由）→ 单次回返（settle/continue/route/uncertain）→ 集中迭代（checkpoint：冻结 baseline/收拢路由/变更验证/结算/版本，方法主体即 4.2）。吸收 planning-inbox、practice-cycle、method-evolution。
+- `work-estimation`：恢复最小工作图与分支，只估算到能区分当前决策的粒度。
+- `work-orchestration`：主 agent 组织与委派——规模/类型→角色或工作动作；分治的分解/整合、委派（六准入/贡献契约/拓扑/证据重连/委托 prompt 最小化）、按需要筛选后由 Main 重连整体；评审人委派（reviewer-styles）与 Review 模式。吸收 agent-delegation、harness-review。
+- `owner-facing-progress`：判断是否值得打扰 owner，设身处地形成最短 decision package，保留选择权继续独立工作（自治的边界控制）。
+- `mechanism-design-review`：加机制前判断真实对象与最小处置，防止把行为模式机制化。
+- `skill-formation`：判断反复出现的差距是否沉淀为可选择性加载的 skill，管生命周期（创建/改写/拆分/合并/降级/删除）。
+
+## 3. 组合关键机制
+
+1. **分层选择性加载**：AGENTS.md（宪章，极短常驻）→ skills（按触发加载）→ harness 文档（详细版）；base/runtime 管强制与权限；防承重方法被稀释。
+2. **默认自治 + 事后纠偏作总开关**：AGENTS.md 给自治权限与请示标准，`owner-facing-progress` 判边界，`feedback-loop` 单次回返跑纠偏闭环，`skill-formation`/`feedback-loop` 集中迭代沉淀经验——自治是可观察、可限制、可回退的循环，不是权限膨胀。
+3. **能动性三回路**：目的锚（AGENTS.md）→ 行动回路（`work-estimation` 选下一步、`work-orchestration` 有界分派）→ 反馈回路（`feedback-loop` 单次回返用结果改变后续判断）→ 记忆回路（`skill-formation`/`feedback-loop` 集中迭代沉淀 correction）→ 回到目的。
+4. **work map 外部化驱动**：Plan 保义务、Todo 保行动、checkpoint 保回返；例外仅限一步完成、低风险可逆——长任务连续性的机制解。
+5. **四层证据链**防"处理了没走到最后"（012A/013A）：semantic handoff → carrier handoff → activation observation → adoption evidence；`archive-*` 不吞应用义务。
+6. **表达纪律贯穿**：面向 Agent 的表达显露改变判断和行动的条件（来源状态/允许效果/验收/返回）；承重语义先于 token 经济；单一语义源；最小真实形式。
+7. **克制机制**：`mechanism-design-review` 作准入检查，防止为"更独立"反而加出更多门和状态。
+
+## 4. 应用 → 集中迭代 → 理论演进（闭环）
+
+这套系统自身的迭代方式：实现并应用 skills+工具 → 应用期产生问题/新想法/理论意见/纠正 → 登记分类 →
+集中基于新结果迭代 AGENTS.md+skills → 理论随版本积累进化。
+
+### 4.1 反馈登记与路由
+
+应用期的反馈性质不同，登记时先分类（机械字段：类型/来源/对象/standing，语义判断归 LLM）：
+
+| 类型 | 例子 | 路由（最小 owner） |
+|---|---|---|
+| 问题/缺陷 | skill 失效、工具缺口 | 修 skill / 工具 / AGENTS.md / runtime |
+| 新想法 | 方法候选、机制候选 | 沉淀到 `skill-formation` 或理论演进入口（见 4.3） |
+| 理论意见 | 改变假设、质疑条目 | 理论演进（见 4.3） |
+| 纠正 | Principal 改变已有假设/范围/owner | Principal correction 闭环（见下） |
+
+**Principal correction 闭环**：纠正不是评论或局部文字修订，是改变既有假设与下游有效性的来源事件。
+`correction → assumption delta → owner routing → stale propagation → re-evaluation → accepted disposition`。
+必须保留 raw、来源与 authority、指向的对象与 revision；不因语气/频率/自报取得 Principal 身份。
+
+### 4.2 集中迭代协议（即 feedback-loop 集中迭代模式的方法主体）
+
+一轮迭代（由 checkpoint 触发，语义边界决定，不是固定轮数）：
+
+1. **冻结 baseline**：打版本号 + 文件指纹（AGENTS.md + skills + theory 整套）；diff 与回退点据此建立。
+2. **收拢与路由**：按 4.1 的登记分类，送回最小 owner。
+3. **变更与验证**：变更后按证据等级验证（format-valid → behavior-observed → boundary-supported → matched-improvement → regression-supported）；应用观察是非受控的，只能产生假设，关键改动升级到受控验证（eval，Phase 2）；无 matched baseline 不声称改善。
+4. **结算**：acceptance card（接受者/硬约束/重大退化定义/最小证据/成本预算/观察窗口）；处置集合 `adopt / adapt-and-retest / retain-baseline / no-proposal / rollback / uncertain`；不允许长期未结算（005A）。结果出现后不为通过改写 card。
+5. **出新版本**：结算即出新版本号；任何一轮可回退/切换到上一版本。
+
+### 4.3 理论演进（stable/unstable + 版本）
+
+**不做候选区、不做多级 standing——只标记稳定/不稳定，靠版本提供回退/切换。**
+
+- `thoughts/`：只追加的原始想法，不承诺稳定（新想法的天然存放处，零新增步骤）。
+- `theory/` 权威源：只收录已采纳、稳定的主张，每条标记 `stable`（默认）。
+- 被应用结果/纠正质疑的主张：原地改标 **`unstable`**，不移动、不另建区；出路只有两条——修订后重新 `stable`，或回退（005A：不长期挂着）。
+- `unstable` 触发下游 stale 检查（谁引用了它：skill/文档/AGENTS.md），生成 stale 清单并重生成（血统传播 `P → theory → skill/文档` 的实操）。
+- **provenance**：每条主张一行注记指向来源（thoughts 条目 id、应用观察、纠正、eval 结果），证据链可回读。
+- 理论进化 = 版本的积累 + 个别条目的稳定度标记；无候选区、无状态机。
+
+### 4.4 系统自检与效果验证
+
+#### 4.4.1 系统自检（smoke test，Phase 1，不需要 fixture）
+
+组合自身完整性的机械验证——不构造任何测试场景，只证明系统健康、可加载、一致。组合有实质变更时运行（每次迭代结算前）。
+
+| 检查面 | 手段 | 验证什么 |
+|---|---|---|
+| 发现层 | 宿主诊断（如 `reasonix doctor capabilities`） | AGENTS.md 被作为 instruction 加载；skills 全部被发现（winner） |
+| 一致性 | `tools/check.py` | skill frontmatter 合法；AGENTS.md 路由表引用的 skill 存在；条目编号无重复；无 stale 引用 |
+| 工具可用 | `tools/version.py status`、register/track 可调用 | 工具可运行、基线未漂移 |
+| 版本基线 | `tools/version.py list` | 有冻结基线、可回退 |
+
+自检全部通过 = 组合完整（format-valid + 发现层成立）；自检失败先修，不进入效果验证或结算。
+
+#### 4.4.2 效果验证（受控 eval，Phase 2，用 fixture）
+
+测"组合是否让 agent 独立走完真实任务并返回可重连证据"。**fixture 是人为构造的受控测试输入，属于受控实验（001C/004A）**——在系统自检通过、有真实行为可测之后再引入，不提前构造。
+完整手册（给主 agent：委派 sub agent、L1/L2/L3 收证据、三层评估、对照回归、处置）见 **`design/test-manual.md`**（本手册是 4.4.2 的方法主体，单一语义源，内容只在那里维护）。
+
+## 5. 工具（工欲善其事，007A：按问题复杂度准备；不造与既有载体重复的工具）
+
+### 第一批：小而即用（先做）
+- **登记脚本**：capture 模式（thinking-log 编号/追加、防覆盖，机械部分归确定性脚本，LLM 只做语义保真）+ process 模式（反馈分类登记：类型/来源/对象/standing，4.1 的机械部分）。
+- **一致性检查脚本**：skill frontmatter、引用链接、条目编号、standing 失效引用（link + stale 一体；机械证据归确定性观察者）。
+- （checkpoint 由 work map 承担——checkpoint 时把 Plan/Todo 留好、恢复时读取，不单列模板。）
+
+### 第二批：闭环支撑（Phase 1 后段）
+- **版本快照脚本**（核心）：迭代前冻结 baseline（版本号 + 文件指纹）、结算出新版本、回退/切换版本。
+- **证据链追踪**：一张表记录四层证据（semantic handoff / carrier handoff / activation observation / adoption evidence）；skill 激活日志与应用义务追踪是其输入与字段，不单独设工具。
+
+### 第三批：Phase 2 再做
+- **eval 脚手架**：baseline vs treatment 对照、holdout 管理（001C/004A）；落地形态与方法见 4.4.2（fixture 归受控 eval，不提前构造），等有真实行为可测再建。
+
+## 6. 边界（不做什么）
+
+- 不造第二个任务板/常驻协调者；不造总控 scheduler/registry/runtime（006B）。
+- 不设理论候选区、不做多级 standing 状态机（stable/unstable + 版本已够）。
+- 不为"以后可能需要"预造工具——同一摩擦出现第二次才造（007A）；不造与既有载体重复的工具（checkpoint 归 work map、激活日志/应用义务归证据链追踪）。
+- 不把文字当强制/权限/唤醒（属 base/runtime）；不把记录当承诺；不把流程完整当完成。
+
+## 7. 一句话总结
+
+AGENTS.md 给"目的 + 自治权限 + 边界 + 入口"，skills 给"推进、边界、表达、沉淀"四组可选择性加载的方法，
+工具承接文字做不到的机械、版本与恢复——靠"默认自治纠偏 + 能动性三回路 + work map 外部化 + 四层证据链"
+接成闭环；系统自身靠"反馈登记 → 集中迭代（版本冻结/结算/回退）→ 理论 stable/unstable 演进"滚动进化，
+让 agent 自主走远、越走越强。
